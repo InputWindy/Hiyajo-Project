@@ -1,0 +1,15 @@
+{
+  "FileVersion": 1,
+  "EngineAssociation": "Maho",
+  "EngineDirectory": "../Hiyajo",
+  "ProjectName": "Hiyajo-Project",
+  "Description": "",
+  "Author": "",
+  "Modules": [
+    {
+      "Name": "Hiyajo-Project",
+      "Type": "Runtime"
+    }
+  ],
+  "Plugins": []
+}
