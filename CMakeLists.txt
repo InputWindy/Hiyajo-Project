@@ -33,7 +33,7 @@ maho_ensure_workspace_dirs()
 maho_warn_if_not_intermediate_binary_dir()
 
 option(MAHO_BUILD_SHARED "Build Maho engine as a shared library (DLL)" ON)
-# Push Maho::FEditorLayer from the game App (layer lives in Maho.dll under Core/Layer).
+# Push Maho::FEditorLayer from the game App (Editor sources live in the game project under Source/Editor/).
 option(GAME_WITH_EDITOR "Enable Maho::FEditorLayer overlay (disable for shipping)" ON)
 
 # Enabled plugins come from the sibling .cproject (or -DMAHO_CPROJECT=...).
@@ -58,6 +58,7 @@ set(GAME_SHADERS_DIR "${GAME_ROOT}/Shaders")
 set(GAME_PLUGINS_DIR "${GAME_ROOT}/Plugins")
 set(GAME_CONFIG_DIR "${GAME_ROOT}/Config")
 set(GAME_SCRIPTS_DIR "${GAME_ROOT}/Scripts")
+set(GAME_GENERATED_DIR "${GAME_ROOT}/Intermediate/Generated")
 
 maho_collect_sources(GAME_SOURCES "${GAME_SOURCE_DIR}")
 if(GAME_SOURCES STREQUAL "")
@@ -67,7 +68,10 @@ endif()
 add_executable(Hiyajo-Project ${GAME_SOURCES})
 target_include_directories(Hiyajo-Project PRIVATE
 	"${GAME_SOURCE_DIR}"
-	"${GAME_SOURCE_DIR}/Hiyajo-Project/Public"
+	"${GAME_GENERATED_DIR}"
+	"${MAHO_ENGINE_ROOT}/Maho/Source/Private"
+	"${MAHO_ENGINE_ROOT}/Maho/ThirdParty/VulkanMemoryAllocator/include"
+	"${MAHO_ENGINE_ROOT}/Maho/ThirdParty/nlohmann"
 )
 target_link_libraries(Hiyajo-Project PRIVATE Maho::Engine Maho::Modules)
 target_compile_features(Hiyajo-Project PRIVATE cxx_std_20)
@@ -83,6 +87,8 @@ endif()
 
 maho_set_output_dirs(Hiyajo-Project)
 maho_source_group_mirrors("${GAME_SOURCE_DIR}" ${GAME_SOURCES})
+# Generated codegen files: compiled but not shown in VS source tree.
+target_sources(Hiyajo-Project PRIVATE "${GAME_GENERATED_DIR}/Hiyajo-ProjectApp.cpp")
 maho_add_lua_scripts(Hiyajo-Project "${GAME_SCRIPTS_DIR}")
 set_target_properties(Hiyajo-Project PROPERTIES
 	FOLDER "Games"
