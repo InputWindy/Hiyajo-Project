@@ -68,6 +68,7 @@ endif()
 add_executable(Hiyajo-Project ${GAME_SOURCES})
 target_include_directories(Hiyajo-Project PRIVATE
 	"${GAME_SOURCE_DIR}"
+	"${GAME_SOURCE_DIR}/Game"
 	"${GAME_GENERATED_DIR}"
 	"${MAHO_ENGINE_ROOT}/Maho/Source/Private"
 	"${MAHO_ENGINE_ROOT}/Maho/ThirdParty/VulkanMemoryAllocator/include"
@@ -97,7 +98,7 @@ set_target_properties(Hiyajo-Project PROPERTIES
 )
 add_dependencies(Hiyajo-Project Maho MahoModules)
 
-maho_copy_shaders(Hiyajo-Project "${GAME_SHADERS_DIR}" "Project/Shaders")
+maho_copy_shaders(Hiyajo-Project "${GAME_SHADERS_DIR}" "Shaders")
 if(IS_DIRECTORY "${GAME_CONFIG_DIR}")
 	add_custom_command(TARGET Hiyajo-Project POST_BUILD
 		COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:Hiyajo-Project>/Config"
@@ -154,7 +155,7 @@ if(IS_DIRECTORY "${GAME_PLUGINS_DIR}")
 endif()
 
 maho_install_runtime_target(Hiyajo-Project)
-maho_install_directory("${GAME_SHADERS_DIR}" "Project/Shaders")
+maho_install_directory("${GAME_SHADERS_DIR}" "Shaders")
 maho_install_directory("${GAME_PLUGINS_DIR}" "Project/Plugins")
 maho_install_directory("${GAME_CONFIG_DIR}" "Config")
 maho_install_directory("${GAME_SCRIPTS_DIR}" "Scripts")

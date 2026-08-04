@@ -1,12 +1,13 @@
 #pragma once
 
-#include "Game/World/World.h"
+#include "ECS/World.h"
+#include "World/Systems/MovementSystem.h"
+#include "World/Systems/CameraSystem.h"
 
 #include <Core/Sequencer/EngineExtension.h>
 
 /**
- * Project layer that owns and ticks FWorld.
- * Push as a normal layer (below editor overlays).
+ * Project layer that owns and ticks the ECS world.
  */
 class FWorldLayer final : public Maho::FLayer
 {
@@ -16,11 +17,13 @@ public:
 
 	virtual bool ExecuteStage(Maho::EEngineStage Stage) override;
 
-	[[nodiscard]] FWorld& GetWorld() { return World; }
-	[[nodiscard]] const FWorld& GetWorld() const { return World; }
+	[[nodiscard]] Maho::FECSWorld& GetECSWorld() { return ECSWorld; }
+	[[nodiscard]] const Maho::FECSWorld& GetECSWorld() const { return ECSWorld; }
 
 private:
 	std::string WorldName;
-	FWorld World;
+	Maho::FECSWorld ECSWorld;
+	FMovementSystem MovementSystem;
+	FCameraSystem CameraSystem;
 	bool bWorldReady = false;
 };

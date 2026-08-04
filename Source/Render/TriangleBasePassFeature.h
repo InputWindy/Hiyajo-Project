@@ -3,24 +3,25 @@
 #include <Render/Sequencer/RenderFeature.h>
 #include <Render/RenderPipelineStage.h>
 #include <Render/UI/ImGuiSystem.h>
+#include <Render/ShaderCompiler.h>
 
 #include <cstdint>
 #include <memory>
+#include <unordered_map>
+#include <vector>
 
 namespace Maho
 {
 
 class FRenderServer;
 class IRHI;
-class FShaderCache;
-class FShaderLoader;
+class FShaderDatabase;
+struct FShaderPassCompiled;
 
 class FRHIBuffer;
 class FRHIShaderModule;
 class FRHIDescriptorSetLayout;
 class FRHIPipelineLayout;
-class FRHIRenderPass;
-class FRHIFramebuffer;
 class FRHIGraphicsPipeline;
 class FRHITexture;
 class FRHITextureView;
@@ -28,11 +29,11 @@ class FRHIDescriptorPool;
 class FRHIDescriptorSet;
 
 /**
- * BasePass feature that draws ColoredTriangle scene primitives.
- * GPU resources stay here; transforms come from FSceneUpdatePacket (World actors).
+ * BasePass feature — fully declarative RDG with dynamic rendering.
  *
- * Must use TRenderFeatureBase<Self> (not FRenderFeature) so ParticipatesInStage
- * resolves this type's FDependsPack / TFeatureDependsPack inheritance.
+ * Shader compilation is lazy: shaders are compiled on first use in
+ * BuildRenderGraph, not during registration. This supports real-time
+ * shader editing in the editor without restarting the engine.
  */
 class FTriangleBasePassFeature final : public TRenderFeatureBase<FTriangleBasePassFeature>,
 	public TFeatureDependsPack<
@@ -47,33 +48,41 @@ public:
 	void OnUnregister(FRenderServer& RenderServer) override;
 	void BuildRenderGraph(FRDGBuilder& GB, FRenderServer& Server) override;
 
-private:
-	struct FImpl
-	{
-		bool bInitialized = false;
-		IRHI* RHI = nullptr;
+	/** Mark shader dirty so next frame recompiles it (hot-reload from editor). */
+	void MarkShaderDirty() { Ptr->bShaderReady = false; }
 
+private:
+	/** Per‑hash pass resources (pipeline + descriptor sets — lifetime stable). */
+	struct FBatchResources
+	{
 		FRHIShaderModule* VertexShader = nullptr;
 		FRHIShaderModule* FragmentShader = nullptr;
 		FRHIDescriptorSetLayout* FrameSetLayout = nullptr;
 		FRHIDescriptorSetLayout* ObjectSetLayout = nullptr;
 		FRHIPipelineLayout* PipelineLayout = nullptr;
-		FRHIRenderPass* OffscreenPass = nullptr;
-		FRHIFramebuffer* OffscreenFB = nullptr;
 		FRHIGraphicsPipeline* Pipeline = nullptr;
-		FRHIBuffer* TriangleVBO = nullptr;
-		FRHIBuffer* FrameUniformBuf = nullptr;
-		FRHIBuffer* ObjectUniformBuf = nullptr;
-		FRHITexture* ViewportTex = nullptr;
-		FRHITextureView* ViewportTexView = nullptr;
 		FRHIDescriptorPool* DescPool = nullptr;
 		FRHIDescriptorSet* FrameDescSet = nullptr;
 		FRHIDescriptorSet* ObjectDescSet = nullptr;
-		FImGuiTextureHandle GameViewImGuiTexture;
-		bool bViewportShaderResource = false;
+		const FShaderPassCompiled* PassDesc = nullptr;
+	};
 
-		std::unique_ptr<FShaderCache> ShaderCache;
-		std::unique_ptr<FShaderLoader> ShaderLoader;
+	struct FImpl
+	{
+		bool bInitialized = false;
+		bool bShaderReady = false;   // true after first lazy compile + batch creation
+		IRHI* RHI = nullptr;
+
+		// ── Persistent GPU resources (cross‑frame lifetime) ──
+		FRHIBuffer* TriangleVBO = nullptr;
+		FRHIBuffer* FrameUniformBuf = nullptr;         // set=0 – CPUToGPU, uploaded each frame
+		FRHIBuffer* ObjectUniformBuf = nullptr;        // set=1 – CPUToGPU, uploaded each frame
+		FRHITexture* ViewportTex = nullptr;
+		FRHITextureView* ViewportTexView = nullptr;
+		FImGuiTextureHandle GameViewImGuiTexture;
+
+		std::unique_ptr<FShaderDatabase> ShaderDb;
+		std::unordered_map<std::uint64_t, FBatchResources> Batches;
 
 		std::uint32_t VpWidth = 600;
 		std::uint32_t VpHeight = 400;
@@ -81,9 +90,11 @@ private:
 
 	std::unique_ptr<FImpl> Ptr;
 
-	bool Initialize(FRenderServer& RenderServer);
+	bool SetupPersistentResources(FRenderServer& RenderServer);
+	bool EnsureShaderReady();
+	FBatchResources CreateBatchResources(const FShaderPassCompiled& Pass);
+	void DestroyBatchResources(FBatchResources& B);
+	void DestroyShaderResources();
 };
-
-void RegisterTriangleBasePassFeature(FRenderServer& Server);
 
 } // namespace Maho

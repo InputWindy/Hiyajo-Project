@@ -1,6 +1,7 @@
-#include "Render/TriangleBasePassFeature.h"
+﻿#include "Render/TriangleBasePassFeature.h"
 #include <Render/SceneUpdatePacket.h>
 
+#include <cmath>
 #include <cstring>
 #include <vector>
 
@@ -10,13 +11,7 @@
 #include <Render/MahoCommonUniforms.h>
 #include <Render/RDG/RDGBuilder.h>
 #include <Render/RenderServer.h>
-#include <Render/ShaderCache.h>
 #include <Render/ShaderCompiler.h>
-#include <Render/ShaderLoader.h>
-
-#include "Render/RHI/VulkanCommandList.h"
-#include "Render/RHI/VulkanRHI.h"
-#include "Render/RHI/VulkanResources.h"
 
 namespace Maho
 {
@@ -37,6 +32,19 @@ static const FSimpleVertex TriangleVertices[] =
 	{ { -0.5f, -0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f } },
 };
 
+/** Compute a right‑handed perspective projection matrix (Vulkan clip space, z∈[0,1]). */
+static void BuildPerspProj(float FOV, float Aspect, float Near, float Far, float Out[16])
+{
+	float F = 1.0f / std::tan((FOV * 0.5f) * 3.14159265f / 180.0f);
+	float M[16] = {
+		F / Aspect, 0, 0, 0,
+		0, F, 0, 0,
+		0, 0, Far / (Far - Near), 1,
+		0, 0, -(Near * Far) / (Far - Near), 0,
+	};
+	std::memcpy(Out, M, sizeof(M));
+}
+
 } // namespace
 
 FTriangleBasePassFeature::FTriangleBasePassFeature()
@@ -47,20 +55,27 @@ FTriangleBasePassFeature::FTriangleBasePassFeature()
 
 FTriangleBasePassFeature::~FTriangleBasePassFeature() = default;
 
-// ââ OnRegister / OnUnregister âââââââââââââââââââââââââââââââââââââ
+// ═══════════════════════════════════════════
+// OnRegister / OnUnregister
+// ═══════════════════════════════════════════
 
 bool FTriangleBasePassFeature::OnRegister(FRenderServer& RenderServer)
 {
-	return Initialize(RenderServer);
+	if (!SetupPersistentResources(RenderServer))
+	{
+		MAHO_CORE_ERROR("TriangleBasePass: persistent resource setup failed");
+		return false;
+	}
+
+	// Shader compilation is deferred until first BuildRenderGraph (lazy-init).
+	MAHO_CORE_INFO("TriangleBasePass: registered (shader lazy)");
+	return true;
 }
 
 void FTriangleBasePassFeature::OnUnregister(FRenderServer& RenderServer)
 {
 	auto& S = *Ptr;
-	if (!S.bInitialized)
-	{
-		return;
-	}
+	if (!S.bInitialized) return;
 
 	if (S.GameViewImGuiTexture.IsValid())
 	{
@@ -70,217 +85,144 @@ void FTriangleBasePassFeature::OnUnregister(FRenderServer& RenderServer)
 	}
 
 	IRHI* RHI = RenderServer.GetRHIServer().GetRHI();
-	if (RHI == nullptr)
-	{
-		S.bInitialized = false;
-		return;
-	}
+	if (!RHI) { S.bInitialized = false; return; }
 
-	if (S.Pipeline)          { RHI->DestroyGraphicsPipeline(S.Pipeline); S.Pipeline = nullptr; }
-	if (S.OffscreenFB)       { RHI->DestroyFramebuffer(S.OffscreenFB); S.OffscreenFB = nullptr; }
-	if (S.OffscreenPass)     { RHI->DestroyRenderPass(S.OffscreenPass); S.OffscreenPass = nullptr; }
+	DestroyShaderResources();
+
 	if (S.ViewportTexView)   { RHI->DestroyTextureView(S.ViewportTexView); S.ViewportTexView = nullptr; }
 	if (S.ViewportTex)       { RHI->DestroyTexture(S.ViewportTex); S.ViewportTex = nullptr; }
-	if (S.DescPool)
-	{
-		if (S.FrameDescSet)  { RHI->FreeDescriptorSet(S.DescPool, S.FrameDescSet); S.FrameDescSet = nullptr; }
-		if (S.ObjectDescSet) { RHI->FreeDescriptorSet(S.DescPool, S.ObjectDescSet); S.ObjectDescSet = nullptr; }
-		RHI->DestroyDescriptorPool(S.DescPool);
-		S.DescPool = nullptr;
-	}
-	if (S.ObjectSetLayout)   { RHI->DestroyDescriptorSetLayout(S.ObjectSetLayout); S.ObjectSetLayout = nullptr; }
-	if (S.FrameSetLayout)    { RHI->DestroyDescriptorSetLayout(S.FrameSetLayout); S.FrameSetLayout = nullptr; }
-	if (S.PipelineLayout)    { RHI->DestroyPipelineLayout(S.PipelineLayout); S.PipelineLayout = nullptr; }
-	if (S.ObjectUniformBuf)  { RHI->DestroyBuffer(S.ObjectUniformBuf); S.ObjectUniformBuf = nullptr; }
 	if (S.FrameUniformBuf)   { RHI->DestroyBuffer(S.FrameUniformBuf); S.FrameUniformBuf = nullptr; }
+	if (S.ObjectUniformBuf)  { RHI->DestroyBuffer(S.ObjectUniformBuf); S.ObjectUniformBuf = nullptr; }
 	if (S.TriangleVBO)       { RHI->DestroyBuffer(S.TriangleVBO); S.TriangleVBO = nullptr; }
-	if (S.FragmentShader)    { RHI->DestroyShaderModule(S.FragmentShader); S.FragmentShader = nullptr; }
-	if (S.VertexShader)      { RHI->DestroyShaderModule(S.VertexShader); S.VertexShader = nullptr; }
 
-	S.ShaderLoader.reset();
-	S.ShaderCache.reset();
-	S.bViewportShaderResource = false;
+	S.ShaderDb.reset();
 	S.bInitialized = false;
 }
 
-// ââ BuildRenderGraph ââââââââââââââââââââââââââââââââââââââââââââââ
+// ═══════════════════════════════════════════
+// BuildRenderGraph  —  declarative RDG + dynamic rendering
+// ═══════════════════════════════════════════
 
 void FTriangleBasePassFeature::BuildRenderGraph(FRDGBuilder& GB, FRenderServer& Server)
 {
 	auto& S = *Ptr;
-	if (!S.bInitialized)
+	if (!S.bInitialized) return;
+
+	// Lazy shader compilation — first frame only, or after MarkShaderDirty().
+	if (!EnsureShaderReady())
 	{
+		MAHO_CORE_ERROR("TriangleBasePass: shader not ready, skipping frame");
 		return;
 	}
 
 	const FSceneUpdatePacket& Scene = Server.GetCurrentScene();
-	if (Scene.Draws.empty())
-	{
-		return;
-	}
-	const std::vector<FSceneDrawItem>& DrawItems = Scene.Draws;
+	if (Scene.Draws.empty()) return;
 
+	// ── CPU‑side upload (host‑visible persistent buffers) ──
+
+	FFrameUniforms FrameUni{};
+	std::memcpy(FrameUni.View, Scene.Camera.View, sizeof(FrameUni.View));
+	BuildPerspProj(Scene.Camera.FOV, Scene.Camera.AspectRatio,
+	               Scene.Camera.NearPlane, Scene.Camera.FarPlane, FrameUni.Proj);
+	// ViewProj = Proj * View (column-major mat4 multiply)
+	for (int Col = 0; Col < 4; ++Col)
 	{
-		FFrameUniforms Uni{};
-		Uni.View[0] = Uni.View[5] = Uni.View[10] = Uni.View[15] = 1.0f;
-		Uni.Proj[0] = Uni.Proj[5] = Uni.Proj[10] = Uni.Proj[15] = 1.0f;
-		Uni.ViewProj[0] = Uni.ViewProj[5] = Uni.ViewProj[10] = Uni.ViewProj[15] = 1.0f;
-		S.RHI->UpdateBuffer(S.FrameUniformBuf, 0, sizeof(FFrameUniforms), &Uni);
+		for (int Row = 0; Row < 4; ++Row)
+		{
+			float Sum = 0.0f;
+			for (int K = 0; K < 4; ++K)
+				Sum += FrameUni.Proj[K * 4 + Row] * FrameUni.View[Col * 4 + K];
+			FrameUni.ViewProj[Col * 4 + Row] = Sum;
+		}
 	}
+	S.RHI->UpdateBuffer(S.FrameUniformBuf, 0, sizeof(FrameUni), &FrameUni);
+
+	std::vector<FObjectUniforms> ObjectData;
+	ObjectData.reserve(Scene.Draws.size());
+	for (const auto& Item : Scene.Draws)
 	{
 		FObjectUniforms Uni{};
-		std::memcpy(Uni.LocalToWorld, DrawItems[0].LocalToWorld, sizeof(Uni.LocalToWorld));
-		std::memcpy(Uni.LocalToWorldInverseTranspose, DrawItems[0].LocalToWorld, sizeof(Uni.LocalToWorldInverseTranspose));
-		S.RHI->UpdateBuffer(S.ObjectUniformBuf, 0, sizeof(FObjectUniforms), &Uni);
+		std::memcpy(Uni.LocalToWorld, Item.LocalToWorld, sizeof(Uni.LocalToWorld));
+		std::memcpy(Uni.LocalToWorldInverseTranspose, Item.LocalToWorld,
+		            sizeof(Uni.LocalToWorldInverseTranspose));
+		ObjectData.push_back(Uni);
 	}
+	if (!ObjectData.empty())
+		S.RHI->UpdateBuffer(S.ObjectUniformBuf, 0,
+		                    ObjectData.size() * sizeof(FObjectUniforms), ObjectData.data());
 
-	auto* RDGViewport = GB.RegisterExternalTexture(
-		S.ViewportTex,
-		S.bViewportShaderResource ? ERHIResourceState::ShaderResource : ERHIResourceState::Common,
-		"ViewportTex");
-	auto* RDGVBO = GB.RegisterExternalBuffer(
+	// ── RDG resource registration ──
+
+	FRDGTexture* RDGViewport = GB.RegisterExternalTexture(
+		S.ViewportTex, ERHIResourceState::Common, "ViewportTex");
+	FRDGBuffer* RDGVBO = GB.RegisterExternalBuffer(
 		S.TriangleVBO, ERHIResourceState::VertexBuffer, "TriVBO");
-	auto* RDGFrameUBO = GB.RegisterExternalBuffer(
-		S.FrameUniformBuf, ERHIResourceState::UniformBuffer, "FrameUBO");
-	auto* RDGObjUBO = GB.RegisterExternalBuffer(
-		S.ObjectUniformBuf, ERHIResourceState::UniformBuffer, "ObjUBO");
+	FRDGBuffer* RDGFrameUBO = GB.RegisterExternalBuffer(
+		S.FrameUniformBuf, ERHIResourceState::Common, "FrameUBO");
+	FRDGBuffer* RDGObjUBO = GB.RegisterExternalBuffer(
+		S.ObjectUniformBuf, ERHIResourceState::Common, "ObjectUBO");
 
-	auto& DrawPass = GB.AddRasterPass("DrawTriangleActors");
+	// ── Draw pass (per batch, parameter‑based with dynamic rendering) ──
 
-	// Write: RDG inserts current -> RenderTarget before execute.
-	GB.Write(DrawPass, RDGViewport, ERHIResourceState::RenderTarget);
-	GB.Read(DrawPass, RDGVBO,      ERHIResourceState::VertexBuffer);
-	GB.Read(DrawPass, RDGFrameUBO, ERHIResourceState::UniformBuffer);
-	GB.Read(DrawPass, RDGObjUBO,   ERHIResourceState::UniformBuffer);
-
-	DrawPass.SetExecute([this, Draws = std::move(DrawItems)](FRHICommandList& Cmd) mutable
+	for (auto& Pair : S.Batches)
 	{
-		auto& S = *Ptr;
+		FBatchResources& Batch = Pair.second;
 
-		auto* VkCmdList = static_cast<FVulkanCommandList*>(&Cmd);
-		VkCommandBuffer VkBuf = VkCmdList->GetVkCommandBuffer();
+		auto& Params = GB.AllocateParameters();
+		Params.Reads = {
+			{RDGVBO,       ERHIResourceState::VertexBuffer},
+			{RDGFrameUBO,  ERHIResourceState::UniformBuffer},
+			{RDGObjUBO,    ERHIResourceState::UniformBuffer},
+		};
+		Params.Writes = {
+			{RDGViewport,  ERHIResourceState::RenderTarget},
+		};
+		FRDGPassParameters::FRenderTargetBinding RT{};
+		RT.Texture = RDGViewport;
+		RT.View = S.ViewportTexView;
+		RT.LoadOp = ERHILoadOp::Clear;
+		RT.StoreOp = ERHIStoreOp::Store;
+		RT.ClearColor[0] = 0.2f;
+		RT.ClearColor[1] = 0.2f;
+		RT.ClearColor[2] = 0.2f;
+		RT.ClearColor[3] = 1.0f;
+		Params.RenderTargets = { RT };
 
-		auto* VkPass  = static_cast<FVulkanRenderPass*>(S.OffscreenPass);
-		auto* VkFB    = static_cast<FVulkanFramebuffer*>(S.OffscreenFB);
-		auto* VkDesc0 = static_cast<FVulkanDescriptorSet*>(S.FrameDescSet);
-		auto* VkDesc1 = static_cast<FVulkanDescriptorSet*>(S.ObjectDescSet);
-
-		{
-			VkRenderPassBeginInfo Info{};
-			Info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-			Info.renderPass = VkPass->GetVkPass();
-			Info.framebuffer = VkFB->GetVkFramebuffer();
-			Info.renderArea.extent = { S.VpWidth, S.VpHeight };
-			VkClearValue CV{};
-			CV.color = { { 0.12f, 0.18f, 0.28f, 1.0f } };
-			Info.clearValueCount = 1;
-			Info.pClearValues = &CV;
-			vkCmdBeginRenderPass(VkBuf, &Info, VK_SUBPASS_CONTENTS_INLINE);
-		}
-
-		Cmd.BindGraphicsPipeline(S.Pipeline);
-
-		{
-			VkDescriptorSet Sets[] = { VkDesc0->GetVkSet(), VkDesc1->GetVkSet() };
-			vkCmdBindDescriptorSets(VkBuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-				static_cast<FVulkanPipelineLayout*>(S.PipelineLayout)->GetVkLayout(),
-				0, 2, Sets, 0, nullptr);
-		}
-
-		Cmd.BindVertexBuffer(0, S.TriangleVBO);
-		Cmd.SetViewport(0.0f, 0.0f, static_cast<float>(S.VpWidth), static_cast<float>(S.VpHeight));
-		Cmd.SetScissor(0, 0, S.VpWidth, S.VpHeight);
-
-		for (const FSceneDrawItem& Item : Draws)
-		{
-			FObjectUniforms Uni{};
-			std::memcpy(Uni.LocalToWorld, Item.LocalToWorld, sizeof(Uni.LocalToWorld));
-			std::memcpy(Uni.LocalToWorldInverseTranspose, Item.LocalToWorld, sizeof(Uni.LocalToWorldInverseTranspose));
-			S.RHI->UpdateBuffer(S.ObjectUniformBuf, 0, sizeof(FObjectUniforms), &Uni);
-			Cmd.Draw(3, 1, 0, 0);
-		}
-
-		vkCmdEndRenderPass(VkBuf);
-
-		Cmd.TransitionTexture(
-			S.ViewportTex,
-			ERHIResourceState::RenderTarget,
-			ERHIResourceState::ShaderResource);
-		S.bViewportShaderResource = true;
-	});
+		GB.AddRasterPass("DrawTriangles_Batch",
+			Params,
+			[VpW = S.VpWidth, VpH = S.VpHeight,
+			 Pipeline = Batch.Pipeline,
+			 FrameSet = Batch.FrameDescSet,
+			 ObjSet = Batch.ObjectDescSet,
+			 VBO = S.TriangleVBO,
+			 NumDraws = static_cast<std::size_t>(Scene.Draws.size())]
+			 (FRHICommandList& Cmd) mutable
+			{
+				Cmd.BindGraphicsPipeline(Pipeline);
+				FRHIDescriptorSet* Sets[] = { FrameSet, ObjSet };
+				Cmd.BindDescriptorSets(0, Sets, 2);
+				Cmd.BindVertexBuffer(0, VBO);
+				Cmd.SetViewport(0.0f, 0.0f, static_cast<float>(VpW), static_cast<float>(VpH));
+				Cmd.SetScissor(0, 0, VpW, VpH);
+				for (std::size_t I = 0; I < NumDraws; ++I)
+					Cmd.Draw(3, 1, 0, 0);
+			});
+	}
 }
 
-// ââ Initialize ââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ═══════════════════════════════════════════
+// SetupPersistentResources (no shader compilation)
+// ═══════════════════════════════════════════
 
-bool FTriangleBasePassFeature::Initialize(FRenderServer& RenderServer)
+bool FTriangleBasePassFeature::SetupPersistentResources(FRenderServer& RenderServer)
 {
 	auto& S = *Ptr;
+	if (S.bInitialized) return true;
+
 	S.RHI = RenderServer.GetRHIServer().GetRHI();
-	if (S.RHI == nullptr)
-	{
-		return false;
-	}
+	if (!S.RHI) return false;
 
-	auto* VkRHI = RenderServer.GetVulkanRHI();
-	if (VkRHI == nullptr)
-	{
-		return false;
-	}
-
-	if (!FShaderCompiler::Initialize())
-	{
-		MAHO_CORE_ERROR("TriangleBasePass: shader compiler init failed");
-		return false;
-	}
-
-	if (!GApp)
-	{
-		MAHO_CORE_ERROR("TriangleBasePass: GApp missing (need Config shader paths)");
-		return false;
-	}
-
-	const FConfig& Config = GApp->GetConfig();
-	const std::string EngineCommon = Config.EngineShadersDir + "/Common";
-	const std::string ProjectCommon = Config.ProjectShadersDir + "/Common";
-
-	S.ShaderCache = std::make_unique<FShaderCache>(Config.CachedDir);
-	S.ShaderLoader = std::make_unique<FShaderLoader>(
-		*S.ShaderCache,
-		std::vector<std::string>{ Config.EngineShadersDir, Config.ProjectShadersDir },
-		std::vector<std::string>{ EngineCommon, ProjectCommon });
-
-	FShaderPackage Package = S.ShaderLoader->LoadShader("Triangle.shader");
-	if (!Package.Vertex.bSuccess || !Package.Fragment.bSuccess)
-	{
-		MAHO_CORE_ERROR(
-			"TriangleBasePass: shader load failed (EngineShadersDir='{}')\nVS: {}\nFS: {}",
-			Config.EngineShadersDir,
-			Package.Vertex.ErrorLog,
-			Package.Fragment.ErrorLog);
-		return false;
-	}
-
-	// Shader modules
-	{
-		FRHIShaderModuleDesc VsDesc;
-		VsDesc.Stage = ERHIShaderStage::Vertex;
-		VsDesc.Bytecode = Package.Vertex.Bytecode.data();
-		VsDesc.BytecodeSize = Package.Vertex.Bytecode.size() * sizeof(std::uint32_t);
-		S.VertexShader = S.RHI->CreateShaderModule(VsDesc);
-
-		FRHIShaderModuleDesc FsDesc;
-		FsDesc.Stage = ERHIShaderStage::Fragment;
-		FsDesc.Bytecode = Package.Fragment.Bytecode.data();
-		FsDesc.BytecodeSize = Package.Fragment.Bytecode.size() * sizeof(std::uint32_t);
-		S.FragmentShader = S.RHI->CreateShaderModule(FsDesc);
-	}
-
-	if (S.VertexShader == nullptr || S.FragmentShader == nullptr)
-	{
-		return false;
-	}
-
-	// VBO (upload via staging)
+	// VBO (persistent, uploaded once at init)
 	{
 		FRHIBufferDesc Desc;
 		Desc.Size = sizeof(TriangleVertices);
@@ -306,7 +248,7 @@ bool FTriangleBasePassFeature::Initialize(FRenderServer& RenderServer)
 		}
 	}
 
-	// Uniform buffers
+	// Frame UBO — host‑visible, updated via UpdateBuffer each frame
 	{
 		FRHIBufferDesc Desc;
 		Desc.Size = sizeof(FFrameUniforms);
@@ -314,46 +256,17 @@ bool FTriangleBasePassFeature::Initialize(FRenderServer& RenderServer)
 		Desc.MemoryUsage = ERHIMemoryUsage::CPUToGPU;
 		S.FrameUniformBuf = S.RHI->CreateBuffer(Desc);
 	}
+
+	// Object UBO — host‑visible, filled in bulk before RDG
 	{
 		FRHIBufferDesc Desc;
-		Desc.Size = sizeof(FObjectUniforms);
+		Desc.Size = sizeof(FObjectUniforms) * 128;
 		Desc.Usage = ERHIBufferUsage::Uniform;
 		Desc.MemoryUsage = ERHIMemoryUsage::CPUToGPU;
 		S.ObjectUniformBuf = S.RHI->CreateBuffer(Desc);
 	}
 
-	// Descriptor set layouts
-	{
-		FRHIDescriptorSetLayoutDesc Desc;
-		FRHIDescriptorBinding B;
-		B.Binding = 0;
-		B.Type = ERHIDescriptorType::UniformBuffer;
-		B.Count = 1;
-		B.Stages = ERHIShaderStage::AllGraphics;
-		Desc.Bindings.push_back(B);
-		S.FrameSetLayout = S.RHI->CreateDescriptorSetLayout(Desc);
-		S.ObjectSetLayout = S.RHI->CreateDescriptorSetLayout(Desc);
-	}
-
-	// Pipeline layout
-	{
-		FRHIPipelineLayoutDesc Desc;
-		Desc.SetLayouts = { S.FrameSetLayout, S.ObjectSetLayout };
-		S.PipelineLayout = S.RHI->CreatePipelineLayout(Desc);
-	}
-
-	// Offscreen render pass
-	{
-		FRHIRenderPassDesc Desc;
-		FRHIRenderPassAttachment Att;
-		Att.Format = ERHIFormat::B8G8R8A8_UNORM;
-		Att.LoadOp = ERHILoadOp::Clear;
-		Att.StoreOp = ERHIStoreOp::Store;
-		Desc.ColorAttachments.push_back(Att);
-		S.OffscreenPass = S.RHI->CreateRenderPass(Desc);
-	}
-
-	// Offscreen texture + view + framebuffer
+	// Viewport texture (dynamic rendering — no render pass / framebuffer needed)
 	{
 		FRHITextureDesc Desc;
 		Desc.Format = ERHIFormat::B8G8R8A8_UNORM;
@@ -366,25 +279,152 @@ bool FTriangleBasePassFeature::Initialize(FRenderServer& RenderServer)
 		ViewDesc.Texture = S.ViewportTex;
 		ViewDesc.Format = ERHIFormat::B8G8R8A8_UNORM;
 		S.ViewportTexView = S.RHI->CreateTextureView(ViewDesc);
-		// Fresh VkImage is UNDEFINED — first BasePass registers it as Common.
-		S.bViewportShaderResource = false;
-	}
-	{
-		FRHIFramebufferDesc Desc;
-		Desc.RenderPass = S.OffscreenPass;
-		Desc.Attachments = { S.ViewportTexView };
-		Desc.Width = S.VpWidth;
-		Desc.Height = S.VpHeight;
-		S.OffscreenFB = S.RHI->CreateFramebuffer(Desc);
 	}
 
-	// Graphics pipeline
+	if (RenderServer.GetImGui().IsInitialized())
+	{
+		FImGuiTextureHandle Handle;
+		if (RenderServer.GetImGui().RegisterExternalSampledTexture(
+			RenderServer.GetRHIServer(), S.ViewportTexView, Handle))
+		{
+			S.GameViewImGuiTexture = Handle;
+			RenderServer.SetGameViewImGuiTexture(Handle);
+			RenderServer.SetGameViewExtent(S.VpWidth, S.VpHeight);
+		}
+	}
+
+	S.bInitialized = true;
+	MAHO_CORE_INFO("TriangleBasePass: persistent resources ready ({}x{})", S.VpWidth, S.VpHeight);
+	return true;
+}
+
+// ═══════════════════════════════════════════
+// Lazy shader compilation + batch creation
+// ═══════════════════════════════════════════
+
+bool FTriangleBasePassFeature::EnsureShaderReady()
+{
+	auto& S = *Ptr;
+	if (S.bShaderReady) return true;
+	if (!S.RHI) return false;
+
+	// Init glslang once (idempotent).
+	if (!FShaderCompiler::Initialize())
+	{
+		MAHO_CORE_ERROR("TriangleBasePass: shader compiler init failed");
+		return false;
+	}
+
+	if (!GApp)
+	{
+		MAHO_CORE_ERROR("TriangleBasePass: GApp missing for shader compile");
+		return false;
+	}
+
+	const FConfig& Config = GApp->GetConfig();
+	const std::string EngineCommon = Config.EngineShadersDir + "/Common";
+	const std::string ProjectCommon = Config.ProjectShadersDir + "/Common";
+
+	MAHO_CORE_INFO("TriangleBasePass: search paths: ProjectShadersDir='{}' EngineShadersDir='{}'",
+	               Config.ProjectShadersDir, Config.EngineShadersDir);
+
+	// Destroy old batches if recompiling (hot-reload).
+	DestroyShaderResources();
+	if (!S.ShaderDb)
+		S.ShaderDb = std::make_unique<FShaderDatabase>();
+
+	MAHO_CORE_INFO("TriangleBasePass: compiling shader...");
+
+	if (!S.ShaderDb->LoadShader("Triangle.shader",
+		{ Config.ProjectShadersDir, Config.EngineShadersDir },
+		{ ProjectCommon, EngineCommon },
+		Config.CachedDir))
+	{
+		MAHO_CORE_ERROR("TriangleBasePass: shader load/compile failed");
+		return false;
+	}
+
+	const auto& Passes = S.ShaderDb->GetAllPasses();
+	if (Passes.empty())
+	{
+		MAHO_CORE_ERROR("TriangleBasePass: no passes in compiled shader");
+		return false;
+	}
+
+	for (const auto& Pass : Passes)
+	{
+		if (S.Batches.find(Pass.BytecodeHash) != S.Batches.end()) continue;
+		S.Batches[Pass.BytecodeHash] = CreateBatchResources(Pass);
+	}
+
+	S.bShaderReady = true;
+	MAHO_CORE_INFO("TriangleBasePass: shader compiled, {} passes -> {} batches",
+	               Passes.size(), S.Batches.size());
+	return true;
+}
+
+void FTriangleBasePassFeature::DestroyShaderResources()
+{
+	auto& S = *Ptr;
+	IRHI* RHI = S.RHI;
+	if (!RHI) return;
+
+	for (auto& Pair : S.Batches)
+		DestroyBatchResources(Pair.second);
+	S.Batches.clear();
+	S.ShaderDb.reset();
+	S.bShaderReady = false;
+}
+
+// ═══════════════════════════════════════════
+// Batch resources
+// ═══════════════════════════════════════════
+
+FTriangleBasePassFeature::FBatchResources
+FTriangleBasePassFeature::CreateBatchResources(const FShaderPassCompiled& Pass)
+{
+	IRHI* RHI = Ptr->RHI;
+	FBatchResources B;
+	B.PassDesc = &Pass;
+
+	{
+		FRHIShaderModuleDesc VsDesc;
+		VsDesc.Stage = ERHIShaderStage::Vertex;
+		VsDesc.Bytecode = Pass.VertexBytecode.data();
+		VsDesc.BytecodeSize = Pass.VertexBytecode.size() * sizeof(std::uint32_t);
+		B.VertexShader = RHI->CreateShaderModule(VsDesc);
+
+		FRHIShaderModuleDesc FsDesc;
+		FsDesc.Stage = ERHIShaderStage::Fragment;
+		FsDesc.Bytecode = Pass.FragmentBytecode.data();
+		FsDesc.BytecodeSize = Pass.FragmentBytecode.size() * sizeof(std::uint32_t);
+		B.FragmentShader = RHI->CreateShaderModule(FsDesc);
+	}
+
+	{
+		FRHIDescriptorSetLayoutDesc Desc;
+		FRHIDescriptorBinding FB;
+		FB.Binding = 0;
+		FB.Type = ERHIDescriptorType::UniformBuffer;
+		FB.Count = 1;
+		FB.Stages = ERHIShaderStage::AllGraphics;
+		Desc.Bindings.push_back(FB);
+		B.FrameSetLayout = RHI->CreateDescriptorSetLayout(Desc);
+		B.ObjectSetLayout = RHI->CreateDescriptorSetLayout(Desc);
+	}
+
+	{
+		FRHIPipelineLayoutDesc Desc;
+		Desc.SetLayouts = { B.FrameSetLayout, B.ObjectSetLayout };
+		B.PipelineLayout = RHI->CreatePipelineLayout(Desc);
+	}
+
 	{
 		FRHIGraphicsPipelineDesc Desc;
-		Desc.VertexShader = S.VertexShader;
-		Desc.FragmentShader = S.FragmentShader;
-		Desc.Layout = S.PipelineLayout;
-		Desc.RenderPass = S.OffscreenPass;
+		Desc.VertexShader = B.VertexShader;
+		Desc.FragmentShader = B.FragmentShader;
+		Desc.Layout = B.PipelineLayout;
+		Desc.RenderPass = nullptr;
 		Desc.Topology = ERHIPrimitiveTopology::TriangleList;
 		Desc.VertexStride = sizeof(FSimpleVertex);
 
@@ -395,21 +435,29 @@ bool FTriangleBasePassFeature::Initialize(FRenderServer& RenderServer)
 		Desc.Attributes.push_back(Pos);
 
 		FRHIVertexAttribute Col;
-		Col.Location = 1;
+		Col.Location = 5;
 		Col.Format = ERHIFormat::R32G32B32_SFLOAT;
 		Col.Offset = 12;
 		Desc.Attributes.push_back(Col);
 
-		Desc.CullMode = ERHICullMode::None;
+		Desc.CullMode = Pass.RenderState.CullMode;
 		Desc.ColorFormat = ERHIFormat::B8G8R8A8_UNORM;
+		Desc.SampleCount = 1;
 
 		FRHIAttachmentBlend Blend;
+		if (Pass.RenderState.bBlendEnabled)
+		{
+			Blend.bBlend = true;
+			Blend.SrcColorFactor = Pass.RenderState.SrcBlend;
+			Blend.DstColorFactor = Pass.RenderState.DstBlend;
+			Blend.SrcAlphaFactor = Pass.RenderState.SrcAlphaBlend;
+			Blend.DstAlphaFactor = Pass.RenderState.DstAlphaBlend;
+		}
 		Desc.AttachmentBlends.push_back(Blend);
 
-		S.Pipeline = S.RHI->CreateGraphicsPipeline(Desc);
+		B.Pipeline = RHI->CreateGraphicsPipeline(Desc);
 	}
 
-	// Descriptor pool + sets
 	{
 		FRHIDescriptorPoolDesc Desc;
 		Desc.MaxSets = 2;
@@ -417,56 +465,52 @@ bool FTriangleBasePassFeature::Initialize(FRenderServer& RenderServer)
 		Sz.Type = ERHIDescriptorType::UniformBuffer;
 		Sz.Count = 2;
 		Desc.PoolSizes.push_back(Sz);
-		S.DescPool = S.RHI->CreateDescriptorPool(Desc);
+		B.DescPool = RHI->CreateDescriptorPool(Desc);
 	}
-	S.FrameDescSet = S.RHI->AllocateDescriptorSet(S.DescPool, S.FrameSetLayout);
-	S.ObjectDescSet = S.RHI->AllocateDescriptorSet(S.DescPool, S.ObjectSetLayout);
+
+	B.FrameDescSet  = RHI->AllocateDescriptorSet(B.DescPool, B.FrameSetLayout);
+	B.ObjectDescSet = RHI->AllocateDescriptorSet(B.DescPool, B.ObjectSetLayout);
 
 	{
 		FRHIDescriptorWrite W{};
-		W.Set = S.FrameDescSet;
+		W.Set = B.FrameDescSet;
 		W.Binding = 0;
 		W.Type = ERHIDescriptorType::UniformBuffer;
-		W.Buffer = S.FrameUniformBuf;
+		W.Buffer = Ptr->FrameUniformBuf;
 		W.Range = sizeof(FFrameUniforms);
-		S.RHI->UpdateDescriptorSets(&W, 1);
+		RHI->UpdateDescriptorSets(&W, 1);
 	}
 	{
 		FRHIDescriptorWrite W{};
-		W.Set = S.ObjectDescSet;
+		W.Set = B.ObjectDescSet;
 		W.Binding = 0;
 		W.Type = ERHIDescriptorType::UniformBuffer;
-		W.Buffer = S.ObjectUniformBuf;
-		W.Range = sizeof(FObjectUniforms);
-		S.RHI->UpdateDescriptorSets(&W, 1);
+		W.Buffer = Ptr->ObjectUniformBuf;
+		W.Range = sizeof(FObjectUniforms) * 128;
+		RHI->UpdateDescriptorSets(&W, 1);
 	}
 
-	if (RenderServer.GetImGui().IsInitialized())
-	{
-		FImGuiTextureHandle Handle;
-		if (RenderServer.GetImGui().RegisterExternalSampledTexture(
-			RenderServer.GetRHIServer(),
-			S.ViewportTexView,
-			Handle))
-		{
-			S.GameViewImGuiTexture = Handle;
-			RenderServer.SetGameViewImGuiTexture(Handle);
-			RenderServer.SetGameViewExtent(S.VpWidth, S.VpHeight);
-		}
-		else
-		{
-			MAHO_CORE_ERROR("TriangleBasePass: failed to register game-view ImGui texture");
-		}
-	}
-
-	S.bInitialized = true;
-	MAHO_CORE_INFO("TriangleBasePass: RDG-native ({}x{})", S.VpWidth, S.VpHeight);
-	return true;
+	return B;
 }
 
-void RegisterTriangleBasePassFeature(FRenderServer& Server)
+void FTriangleBasePassFeature::DestroyBatchResources(FBatchResources& B)
 {
-	Server.RegisterFeature<FTriangleBasePassFeature>();
+	IRHI* RHI = Ptr->RHI;
+	if (!RHI) return;
+
+	if (B.DescPool)
+	{
+		if (B.FrameDescSet)  { RHI->FreeDescriptorSet(B.DescPool, B.FrameDescSet); B.FrameDescSet = nullptr; }
+		if (B.ObjectDescSet) { RHI->FreeDescriptorSet(B.DescPool, B.ObjectDescSet); B.ObjectDescSet = nullptr; }
+		RHI->DestroyDescriptorPool(B.DescPool);
+		B.DescPool = nullptr;
+	}
+	if (B.ObjectSetLayout) { RHI->DestroyDescriptorSetLayout(B.ObjectSetLayout); B.ObjectSetLayout = nullptr; }
+	if (B.FrameSetLayout)  { RHI->DestroyDescriptorSetLayout(B.FrameSetLayout); B.FrameSetLayout = nullptr; }
+	if (B.PipelineLayout)  { RHI->DestroyPipelineLayout(B.PipelineLayout); B.PipelineLayout = nullptr; }
+	if (B.Pipeline)        { RHI->DestroyGraphicsPipeline(B.Pipeline); B.Pipeline = nullptr; }
+	if (B.FragmentShader)  { RHI->DestroyShaderModule(B.FragmentShader); B.FragmentShader = nullptr; }
+	if (B.VertexShader)    { RHI->DestroyShaderModule(B.VertexShader); B.VertexShader = nullptr; }
 }
 
 } // namespace Maho
