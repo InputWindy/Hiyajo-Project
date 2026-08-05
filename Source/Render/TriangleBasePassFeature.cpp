@@ -8,7 +8,7 @@
 #include <Core/Application/App.h>
 #include <Core/Engine.h>
 #include <Core/System/Log.h>
-#include <Render/MahoCommonUniforms.h>
+#include "MahoCommonUniforms.h"
 #include <Render/RDG/RDGBuilder.h>
 #include <Render/RenderServer.h>
 #include <Render/ShaderCompiler.h>
