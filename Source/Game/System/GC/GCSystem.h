@@ -21,8 +21,6 @@ namespace Maho
 
 class FGCSystem;
 class FResourceSystem;
-void RegisterGeneratedGCPooledTypes(FGCSystem& GC);
-void RegisterGeneratedResourceTypes(FResourceSystem& Manager, FGCSystem& GC);
 
 /**
  * Type-erased pool + TearDown owned by FGCSystem.
@@ -169,9 +167,6 @@ public:
 	[[nodiscard]] bool IsInitialized() const { return bInitialized; }
 
 private:
-	friend void RegisterGeneratedGCPooledTypes(FGCSystem& GC);
-	friend void RegisterGeneratedResourceTypes(FResourceSystem& Manager, FGCSystem& GC);
-
 	const char* GetName() const override { return "GC"; }
 
 	bool ExecuteStage(EEngineStage Stage) override;

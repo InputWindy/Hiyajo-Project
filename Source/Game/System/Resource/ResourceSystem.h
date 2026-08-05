@@ -43,8 +43,6 @@ class FResourceServer;
 class IResourceImporter;
 class IResourceExporter;
 class FCassetPackageImporter;
-void RegisterGeneratedResourceTypes(FResourceSystem& Manager, FGCSystem& GC);
-
 MAHO_ENUM()
 enum class EResourceLoadState : std::uint8_t
 {
@@ -618,7 +616,6 @@ public:
 	[[nodiscard]] bool IsIdle() const override;
 
 private:
-	friend void RegisterGeneratedResourceTypes(FResourceSystem& Manager, FGCSystem& GC);
 	template <typename TResource>
 	friend class TResourceImporter;
 	friend class FCassetPackageImporter;

@@ -44,7 +44,6 @@ bool FGCSystem::Initialize()
 	CollectIntervalSeconds = GCVarCollectInterval.GetValue();
 	PurgeIntervalSeconds = GCVarPurgeInterval.GetValue();
 	bInitialized = true;
-	RegisterGeneratedGCPooledTypes(*this);
 	MAHO_CORE_INFO("GC initialized");
 	return true;
 }

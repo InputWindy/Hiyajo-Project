@@ -110,8 +110,6 @@ bool FResourceSystem::Initialize()
 		return false;
 	}
 
-	RegisterGeneratedResourceTypes(*this, *GC);
-
 	bAcceptingNewWork = true;
 	MAHO_CORE_INFO("FResourceSystem initialized");
 	return true;
