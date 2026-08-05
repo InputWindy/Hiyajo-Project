@@ -73,8 +73,14 @@ target_include_directories(Hiyajo-Project PRIVATE
 	"${MAHO_ENGINE_ROOT}/Maho/Source/Private"
 	"${MAHO_ENGINE_ROOT}/Maho/ThirdParty/VulkanMemoryAllocator/include"
 	"${MAHO_ENGINE_ROOT}/Maho/ThirdParty/nlohmann"
+	"${MAHO_SOL2_INCLUDE_DIR}"
 )
-target_link_libraries(Hiyajo-Project PRIVATE Maho::Engine Maho::Modules)
+target_link_libraries(Hiyajo-Project PRIVATE Maho::Engine Maho::Modules
+	lua
+	assimp)
+if(TARGET zlibstatic)
+	target_link_libraries(Hiyajo-Project PRIVATE zlibstatic)
+endif()
 target_compile_features(Hiyajo-Project PRIVATE cxx_std_20)
 target_compile_definitions(Hiyajo-Project PRIVATE
 	$<$<BOOL:${GAME_WITH_EDITOR}>:GAME_WITH_EDITOR=1>
@@ -89,7 +95,13 @@ endif()
 maho_set_output_dirs(Hiyajo-Project)
 maho_source_group_mirrors("${GAME_SOURCE_DIR}" ${GAME_SOURCES})
 # Generated codegen files: compiled but not shown in VS source tree.
-target_sources(Hiyajo-Project PRIVATE "${GAME_GENERATED_DIR}/Hiyajo-ProjectApp.cpp")
+target_sources(Hiyajo-Project PRIVATE "${GAME_GENERATED_DIR}/Hiyajo-ProjectApp.cpp"
+	"${GAME_GENERATED_DIR}/ObjectReflectTypes.gen.cpp"
+	"${GAME_GENERATED_DIR}/ObjectReflectTypes.gen.h"
+	"${GAME_GENERATED_DIR}/ResourceTypes.gen.cpp"
+	"${GAME_GENERATED_DIR}/ResourceTypes.gen.h"
+	"${GAME_GENERATED_DIR}/LuaReflectBindings.gen.cpp"
+	"${GAME_GENERATED_DIR}/LuaReflectBindings.gen.h")
 maho_add_lua_scripts(Hiyajo-Project "${GAME_SCRIPTS_DIR}")
 set_target_properties(Hiyajo-Project PROPERTIES
 	FOLDER "Games"

@@ -46,7 +46,7 @@ public:
 
 	bool OnRegister(FRenderServer& RenderServer) override;
 	void OnUnregister(FRenderServer& RenderServer) override;
-	void BuildRenderGraph(FRDGBuilder& GB, FRenderServer& Server) override;
+	void ExecuteStage(ERenderPipelineStage Stage, FRDGBuilder& GB) override;
 
 	/** Mark shader dirty so next frame recompiles it (hot-reload from editor). */
 	void MarkShaderDirty() { Ptr->bShaderReady = false; }
@@ -72,6 +72,7 @@ private:
 		bool bInitialized = false;
 		bool bShaderReady = false;   // true after first lazy compile + batch creation
 		IRHI* RHI = nullptr;
+		FRenderServer* RenderServer = nullptr;
 
 		// ── Persistent GPU resources (cross‑frame lifetime) ──
 		FRHIBuffer* TriangleVBO = nullptr;

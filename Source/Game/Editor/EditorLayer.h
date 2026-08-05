@@ -1,9 +1,9 @@
-#pragma once
+﻿#pragma once
 
 #include "Game/Editor/AgentChatClient.h"
 #include "Game/Editor/EditorUIRegistry.h"
-#include <Core/Extension/Resource/Resource.h>
-#include <Core/Object/Object.h>
+#include "Game/System/Resource/ResourceSystem.h"
+#include "Game/Object/Object.h"
 #include <Core/Sequencer/EngineExtension.h>
 #include <Core/System/Log.h>
 #include <Core/Sequencer/EngineStage.h>

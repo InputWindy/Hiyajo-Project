@@ -103,10 +103,11 @@ void FTriangleBasePassFeature::OnUnregister(FRenderServer& RenderServer)
 // BuildRenderGraph  —  declarative RDG + dynamic rendering
 // ═══════════════════════════════════════════
 
-void FTriangleBasePassFeature::BuildRenderGraph(FRDGBuilder& GB, FRenderServer& Server)
+void FTriangleBasePassFeature::ExecuteStage(ERenderPipelineStage Stage, FRDGBuilder& GB)
 {
 	auto& S = *Ptr;
-	if (!S.bInitialized) return;
+	if (!S.bInitialized || !S.RenderServer) return;
+	if (Stage != ERenderPipelineStage::BasePass) return;
 
 	// Lazy shader compilation — first frame only, or after MarkShaderDirty().
 	if (!EnsureShaderReady())
@@ -115,7 +116,7 @@ void FTriangleBasePassFeature::BuildRenderGraph(FRDGBuilder& GB, FRenderServer& 
 		return;
 	}
 
-	const FSceneUpdatePacket& Scene = Server.GetCurrentScene();
+	const FSceneUpdatePacket& Scene = S.RenderServer->GetCurrentScene();
 	if (Scene.Draws.empty()) return;
 
 	// ── CPU‑side upload (host‑visible persistent buffers) ──
@@ -220,6 +221,7 @@ bool FTriangleBasePassFeature::SetupPersistentResources(FRenderServer& RenderSer
 	if (S.bInitialized) return true;
 
 	S.RHI = RenderServer.GetRHIServer().GetRHI();
+	S.RenderServer = &RenderServer;
 	if (!S.RHI) return false;
 
 	// VBO (persistent, uploaded once at init)

@@ -1,7 +1,7 @@
-#include "Game/Script/ScriptLayer.h"
+﻿#include "Game/Script/ScriptLayer.h"
 
 #include <Core/Application/App.h>
-#include <Core/Extension/Script/Script.h>
+#include "Game/System/Script/ScriptSystem.h"
 #include <Core/System/Log.h>
 
 #include <filesystem>

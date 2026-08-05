@@ -1,23 +1,23 @@
-#include "Game/Editor/EditorLayer.h"
+﻿#include "Game/Editor/EditorLayer.h"
 
 #include <Core/Application/App.h>
 #include <Core/System/ConfigFile.h>
 #include <Core/System/Console.h>
 #include "Game/Editor/AgentChatClient.h"
 #include "Game/Editor/EditorUIRegistry.h"
-#include <Core/Extension/GC/GC.h>
+#include "Game/System/GC/GCSystem.h"
 #include <Core/Extension/Platform/Platform.h>
 #include <Core/Extension/Render/Render.h>
-#include <Core/Extension/Resource/Resource.h>
-#include <Core/Object/Package.h>
-#include <Core/Object/SoftObjectPath.h>
+#include "Game/System/Resource/ResourceSystem.h"
+#include "Game/Object/Package.h"
+#include "Game/Object/SoftObjectPath.h"
 #include <Core/System/Log.h>
 #include <Core/System/Paths.h>
 #include <Core/System/Utf8Path.h>
 #include <Render/UI/ImGuiExtensions.h>
 
-#include "Core/Extension/Resource/ResourceIO.h"
-#include "Core/Extension/Resource/TextureImageCodec.h"
+#include "Game/System/Resource/ResourceIO.h"
+#include "Game/System/Resource/TextureImageCodec.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
