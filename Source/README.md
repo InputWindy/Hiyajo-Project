@@ -4,76 +4,7 @@
 
 ## Architecture — Building Blocks on a Shell
 
-```
-┌───────────────────────────────────────────────────────────────────┐
-│                        Hiyajo-Project.exe                         │
-│                                                                   │
-│  ┌──────────────────── GAME THREAD ──────────────────────────┐   │
-│  │                                                            │   │
-│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │   │
-│  │  │  GCSystem    │  │  Resource    │  │  Script      │     │   │
-│  │  │  (UObject    │  │  System      │  │  System      │     │   │
-│  │  │   pool+gc)   │  │  (assets IO) │  │  (Lua/sol2)  │     │   │
-│  │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘     │   │
-│  │         │                 │                 │              │   │
-│  │         ▼                 ▼                 ▼              │   │
-│  │  ┌──────────────────────────────────────────────────┐     │   │
-│  │  │              ECS World (WorldLayer)               │     │   │
-│  │  │  ┌────────────┐ ┌────────────┐ ┌──────────────┐  │     │   │
-│  │  │  │EntityMgr   │ │Archetype   │ │SystemSched   │  │     │   │
-│  │  │  │(entt ids)  │ │(SoA store) │ │(ECS systems) │  │     │   │
-│  │  │  └────────────┘ └────────────┘ └──────────────┘  │     │   │
-│  │  │  Components: Transform · Camera · StaticMesh ·   │     │   │
-│  │  │              Skeleton · Animation · Material ·   │     │   │
-│  │  │              Script (POD, not UObject)            │     │   │
-│  │  └──────────────────────────────────────────────────┘     │   │
-│  │                                                            │   │
-│  │  ┌──────────────────────────────────────────────────┐     │   │
-│  │  │             Editor Layer (GAME_WITH_EDITOR)       │     │   │
-│  │  │  DockSpace · AgentChat · ContentBrowser · Details│     │   │
-│  │  └──────────────────────────────────────────────────┘     │   │
-│  │                                                            │   │
-│  │          ┌─── FTransferHandle (async, non-blocking) ───┐  │   │
-│  └──────────│─────────────────────────────────────────────│──┘   │
-│             ▼                                             ▼      │
-│  ┌────────────────── RENDER THREAD ──────────────────────────┐  │
-│  │                                                            │  │
-│  │  ┌────────────────────────────────────────────────────┐   │  │
-│  │  │  FRenderServer (TAsyncTransferServer)               │   │  │
-│  │  │  ┌──────────────────┐  ┌───────────────────────┐   │   │  │
-│  │  │  │ ResourceUpload    │  │  RenderFeature Driver │   │   │  │
-│  │  │  │ (Exporters +      │  │  ExecuteStage per     │   │   │  │
-│  │  │  │  SnapshotConv)    │  │  pipeline stage       │   │   │  │
-│  │  │  └──────────────────┘  └───────────┬───────────┘   │   │  │
-│  │  └────────────────────────────────────┼───────────────┘   │  │
-│  │                                       ▼                    │  │
-│  │  ┌────────────────────────────────────────────────────┐   │  │
-│  │  │              Render Features (RDG Passes)           │   │  │
-│  │  │  ┌────────────────────┐  ┌────────────────────┐    │   │  │
-│  │  │  │ TriangleBasePass   │  │  ShadowPass (next)  │    │   │  │
-│  │  │  │ Feature            │  │                     │    │   │  │
-│  │  │  └────────────────────┘  └────────────────────┘    │   │  │
-│  │  │        │                        │                   │   │  │
-│  │  │        ▼                        ▼                   │   │  │
-│  │  │  ┌──────────────────────────────────────────────┐  │   │  │
-│  │  │  │            FRDGBuilder (Declarative Graph)    │  │   │  │
-│  │  │  │  Pass scheduling · Resource transitions      │  │   │  │
-│  │  │  └──────────────────────┬───────────────────────┘  │   │  │
-│  │  └─────────────────────────┼──────────────────────────┘   │  │
-│  └────────────────────────────┼──────────────────────────────┘  │
-│                               ▼                                 │
-│  ┌────────────────── RHI THREAD ───────────────────────────┐   │
-│  │  FRHIServer → FRHICommandList → Vulkan (DynamicRender)   │   │
-│  │  ImGuiSystem (viewport rendering, docking)               │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                                                                   │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │                    Maho Engine DLL                       │   │
-│  │  FApp · PlatformSystem · RenderSystem · RHI · RDG        │   │
-│  │  ShaderPipeline · ImGuiSystem · ThreadedServer           │   │
-│  └──────────────────────────────────────────────────────────┘   │
-└───────────────────────────────────────────────────────────────────┘
-```
+![Project Architecture](../Doc/diagrams/project_architecture.png)
 
 ## How to Read This Stack
 
@@ -177,27 +108,7 @@ Hiyajo-Project/
 
 ### 2. Resource Pipeline
 
-```
-Disk (.casset / .png / .fbx)
-  │
-  ▼
-FResourceServer (TAsyncTransferServer)
-  │  Async file read + codec decode
-  ▼
-UResource (CPU bulk data)
-  │  UTexture::GetPixels() / UStaticMesh::GetVertices()
-  ▼
-ResourceSnapshotConverters::TryBuild*CpuSnapshot()
-  │  Extract metadata + pixel/vertex data into engine-side structs
-  ▼
-FRenderServer::QueueResourceUpload<T>()
-  │  TRenderResourceExporter<T> specialization
-  ▼
-FTransferHandle (status: InProgress → Succeeded)
-  │  No blocking — render thread polls fence
-  ▼
-FRHI* GPU objects (VkBuffer, VkImage)
-```
+![Resource Pipeline](../Doc/diagrams/resource_pipeline.png)
 
 ### 3. Shader Compilation
 
