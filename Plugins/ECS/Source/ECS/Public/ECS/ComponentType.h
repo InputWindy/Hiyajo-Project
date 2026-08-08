@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ECS/ECSApi.h"
 #include <bitset>
 #include <cstddef>
 #include <cstdint>
@@ -16,38 +17,13 @@ using FComponentTypeId = std::uint32_t;
 
 namespace Internal
 {
-	inline FComponentTypeId NextComponentTypeId()
-	{
-		static FComponentTypeId Counter = 0;
-		return Counter++;
-	}
+	MAHO_ECS_API FComponentTypeId NextComponentTypeId();
 
-	inline std::vector<std::size_t>& GetComponentSizeRegistry()
-	{
-		static std::vector<std::size_t> Registry;
-		return Registry;
-	}
+	MAHO_ECS_API std::vector<std::size_t>& GetComponentSizeRegistry();
 
-	inline void RegisterComponentSize(FComponentTypeId Id, std::size_t Size)
-	{
-		auto& Registry = GetComponentSizeRegistry();
-		if (Registry.size() <= Id)
-		{
-			Registry.resize(Id + 1, static_cast<std::size_t>(-1));
-		}
-		Registry[Id] = Size;
-	}
+	MAHO_ECS_API void RegisterComponentSize(FComponentTypeId Id, std::size_t Size);
 
-	[[nodiscard]] inline std::size_t GetComponentSize(FComponentTypeId Id)
-	{
-		auto& Registry = GetComponentSizeRegistry();
-		if (Id >= Registry.size())
-		{
-			return 0;
-		}
-		std::size_t Size = Registry[Id];
-		return (Size == static_cast<std::size_t>(-1)) ? 0 : Size;
-	}
+	MAHO_ECS_API [[nodiscard]] std::size_t GetComponentSize(FComponentTypeId Id);
 }
 
 /**
