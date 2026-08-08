@@ -3225,6 +3225,7 @@ void FEditorLayer::TickStartupCassetLoad()
 	}
 
 	StartupCassetLoaded = 0;
+	std::size_t StartupCassetFailed = 0;
 	bool bAnyPending = false;
 	for (const FSoftObjectPath& Soft : StartupCassetSoftPaths)
 	{
@@ -3233,9 +3234,13 @@ void FEditorLayer::TickStartupCassetLoad()
 		{
 			bAnyPending = true;
 		}
-		else
+		else if (State == EResourceLoadState::Ready)
 		{
 			++StartupCassetLoaded;
+		}
+		else
+		{
+			++StartupCassetFailed;
 		}
 	}
 
@@ -3248,9 +3253,19 @@ void FEditorLayer::TickStartupCassetLoad()
 	{
 		bStartupCassetLoadActive = false;
 		RefreshContentListing();
-		AppendOutput(
-			"Loaded " + std::to_string(StartupCassetLoaded) + "/"
-			+ std::to_string(StartupCassetSoftPaths.size()) + " .casset package(s).");
+		if (StartupCassetFailed > 0)
+		{
+			AppendOutput(
+				"Loaded " + std::to_string(StartupCassetLoaded) + "/"
+				+ std::to_string(StartupCassetSoftPaths.size()) + " .casset package(s), "
+				+ std::to_string(StartupCassetFailed) + " failed.");
+		}
+		else
+		{
+			AppendOutput(
+				"Loaded " + std::to_string(StartupCassetLoaded) + "/"
+				+ std::to_string(StartupCassetSoftPaths.size()) + " .casset package(s).");
+		}
 	}
 }
 
