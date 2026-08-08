@@ -46,6 +46,16 @@ public:
 
 	[[nodiscard]] const std::vector<FEntityHandle>& GetPersistentEntities() const { return PersistentEntities; }
 
+	[[nodiscard]] bool IsPersistentEntity(FEntityHandle Handle) const
+	{
+		for (FEntityHandle H : PersistentEntities)
+		{
+			if (H.Index == Handle.Index && H.Generation == Handle.Generation)
+				return true;
+		}
+		return false;
+	}
+
 	template <typename T>
 	T* GetPersistentComponent()
 	{

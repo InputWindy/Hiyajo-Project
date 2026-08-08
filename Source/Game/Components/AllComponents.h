@@ -1,12 +1,17 @@
 #pragma once
 
 #include <cstdint>
-#include <string>
-#include <unordered_map>
-#include <vector>
+#include <cstring>
+#include <type_traits>
 
 namespace Maho
 {
+
+constexpr std::size_t ECSComponentAssetPathMax = 256;
+constexpr std::size_t ECSComponentNameMax = 64;
+constexpr std::size_t ECSMaxPropertyOverrides = 16;
+constexpr std::size_t ECSMaxTextureOverrides = 8;
+constexpr std::size_t ECSMaxScriptParams = 16;
 
 // ═══════════════════════════════════════════
 // Static mesh component
@@ -14,9 +19,12 @@ namespace Maho
 
 struct FStaticMeshComponent
 {
-	std::string MeshPath;
-	[[nodiscard]] bool IsValid() const { return !MeshPath.empty(); }
+	char MeshPath[ECSComponentAssetPathMax] = {};
+
+	[[nodiscard]] bool IsValid() const { return MeshPath[0] != '\0'; }
 };
+
+static_assert(std::is_trivially_copyable_v<FStaticMeshComponent>, "FStaticMeshComponent must be trivially copyable");
 
 // ═══════════════════════════════════════════
 // Skeleton component
@@ -24,9 +32,12 @@ struct FStaticMeshComponent
 
 struct FSkeletonComponent
 {
-	std::string SkeletonPath;
-	[[nodiscard]] bool IsValid() const { return !SkeletonPath.empty(); }
+	char SkeletonPath[ECSComponentAssetPathMax] = {};
+
+	[[nodiscard]] bool IsValid() const { return SkeletonPath[0] != '\0'; }
 };
+
+static_assert(std::is_trivially_copyable_v<FSkeletonComponent>, "FSkeletonComponent must be trivially copyable");
 
 // ═══════════════════════════════════════════
 // Animation component
@@ -34,15 +45,19 @@ struct FSkeletonComponent
 
 struct FAnimationComponent
 {
-	std::string AnimationClipPath;
+	char AnimationClipPath[ECSComponentAssetPathMax] = {};
 	float Time = 0.0f;
 	float Speed = 1.0f;
 	bool bLoop = true;
 	bool bPlaying = true;
 
-	void Play(const std::string& Clip, float InSpeed = 1.0f, bool InLoop = true)
+	void Play(const char* Clip, float InSpeed = 1.0f, bool InLoop = true)
 	{
-		AnimationClipPath = Clip;
+		if (Clip)
+		{
+			std::strncpy(AnimationClipPath, Clip, ECSComponentAssetPathMax - 1);
+			AnimationClipPath[ECSComponentAssetPathMax - 1] = '\0';
+		}
 		Time = 0.0f;
 		Speed = InSpeed;
 		bLoop = InLoop;
@@ -52,6 +67,8 @@ struct FAnimationComponent
 	void Stop() { bPlaying = false; }
 	void Pause() { bPlaying = false; }
 };
+
+static_assert(std::is_trivially_copyable_v<FAnimationComponent>, "FAnimationComponent must be trivially copyable");
 
 // ═══════════════════════════════════════════
 // Camera component
@@ -84,51 +101,183 @@ struct FCameraComponent
 	}
 };
 
+static_assert(std::is_trivially_copyable_v<FCameraComponent>, "FCameraComponent must be trivially copyable");
+
 // ═══════════════════════════════════════════
 // Material component
 // ═══════════════════════════════════════════
 
+struct FPropertyOverride
+{
+	char Name[ECSComponentNameMax] = {};
+	float Data[4] = {};
+	std::uint32_t DataSize = 0; // 1–4
+};
+
+struct FTextureOverride
+{
+	char Name[ECSComponentNameMax] = {};
+	char Path[ECSComponentAssetPathMax] = {};
+};
+
 struct FMaterialComponent
 {
-	std::string ShaderPath;
+	char ShaderPath[ECSComponentAssetPathMax] = {};
 
-	std::unordered_map<std::string, std::vector<float>> PropertyOverrides;
+	FPropertyOverride Overrides[ECSMaxPropertyOverrides] = {};
+	std::uint32_t OverrideCount = 0;
 
-	[[nodiscard]] bool IsValid() const { return !ShaderPath.empty(); }
+	FTextureOverride TextureOverrides[ECSMaxTextureOverrides] = {};
+	std::uint32_t TextureOverrideCount = 0;
 
-	void SetFloat(const std::string& Name, float V) { PropertyOverrides[Name] = {V}; }
-	void SetColor(const std::string& Name, float R, float G, float B, float A) { PropertyOverrides[Name] = {R, G, B, A}; }
-	void SetTexture(const std::string& Name, const std::string& TexPath) { PropertyOverrides[Name] = {0.f}; SetOverridePath(Name, TexPath); }
-	void SetOverridePath(const std::string& Name, const std::string& Path) { OverrideTexturePaths[Name] = Path; }
-	[[nodiscard]] const std::string* GetOverridePath(const std::string& Name) const
+	[[nodiscard]] bool IsValid() const { return ShaderPath[0] != '\0'; }
+
+	void SetFloat(const char* Name, float V)
 	{
-		auto It = OverrideTexturePaths.find(Name);
-		return (It != OverrideTexturePaths.end()) ? &It->second : nullptr;
+		std::uint32_t Idx = FindOrAddOverride(Name);
+		if (Idx < ECSMaxPropertyOverrides)
+		{
+			Overrides[Idx].Data[0] = V;
+			Overrides[Idx].DataSize = 1;
+		}
+	}
+
+	void SetColor(const char* Name, float R, float G, float B, float A)
+	{
+		std::uint32_t Idx = FindOrAddOverride(Name);
+		if (Idx < ECSMaxPropertyOverrides)
+		{
+			Overrides[Idx].Data[0] = R;
+			Overrides[Idx].Data[1] = G;
+			Overrides[Idx].Data[2] = B;
+			Overrides[Idx].Data[3] = A;
+			Overrides[Idx].DataSize = 4;
+		}
+	}
+
+	void SetTexture(const char* Name, const char* TexPath)
+	{
+		SetFloat(Name, 0.0f);
+		SetOverridePath(Name, TexPath);
+	}
+
+	void SetOverridePath(const char* Name, const char* Path)
+	{
+		if (!Name || !Path) return;
+		std::uint32_t Idx = FindOrAddTexOverride(Name);
+		if (Idx < ECSMaxTextureOverrides)
+		{
+			std::strncpy(TextureOverrides[Idx].Path, Path, ECSComponentAssetPathMax - 1);
+			TextureOverrides[Idx].Path[ECSComponentAssetPathMax - 1] = '\0';
+		}
+	}
+
+	[[nodiscard]] const char* GetOverridePath(const char* Name) const
+	{
+		if (!Name) return nullptr;
+		for (std::uint32_t I = 0; I < TextureOverrideCount; ++I)
+		{
+			if (std::strcmp(TextureOverrides[I].Name, Name) == 0)
+				return TextureOverrides[I].Path;
+		}
+		return nullptr;
+	}
+
+	[[nodiscard]] const FPropertyOverride* FindOverride(const char* Name) const
+	{
+		if (!Name) return nullptr;
+		for (std::uint32_t I = 0; I < OverrideCount; ++I)
+		{
+			if (std::strcmp(Overrides[I].Name, Name) == 0)
+				return &Overrides[I];
+		}
+		return nullptr;
 	}
 
 private:
-	std::unordered_map<std::string, std::string> OverrideTexturePaths;
+	std::uint32_t FindOrAddOverride(const char* Name)
+	{
+		for (std::uint32_t I = 0; I < OverrideCount; ++I)
+		{
+			if (std::strcmp(Overrides[I].Name, Name) == 0)
+				return I;
+		}
+		if (OverrideCount >= ECSMaxPropertyOverrides) return ECSMaxPropertyOverrides;
+		std::uint32_t Idx = OverrideCount++;
+		std::strncpy(Overrides[Idx].Name, Name, ECSComponentNameMax - 1);
+		Overrides[Idx].Name[ECSComponentNameMax - 1] = '\0';
+		return Idx;
+	}
+
+	std::uint32_t FindOrAddTexOverride(const char* Name)
+	{
+		for (std::uint32_t I = 0; I < TextureOverrideCount; ++I)
+		{
+			if (std::strcmp(TextureOverrides[I].Name, Name) == 0)
+				return I;
+		}
+		if (TextureOverrideCount >= ECSMaxTextureOverrides) return ECSMaxTextureOverrides;
+		std::uint32_t Idx = TextureOverrideCount++;
+		std::strncpy(TextureOverrides[Idx].Name, Name, ECSComponentNameMax - 1);
+		TextureOverrides[Idx].Name[ECSComponentNameMax - 1] = '\0';
+		return Idx;
+	}
 };
+
+static_assert(std::is_trivially_copyable_v<FMaterialComponent>, "FMaterialComponent must be trivially copyable");
 
 // ═══════════════════════════════════════════
 // Script component
 // ═══════════════════════════════════════════
 
+struct FScriptParam
+{
+	char Key[ECSComponentNameMax] = {};
+	char Value[ECSComponentAssetPathMax] = {};
+};
+
 struct FScriptComponent
 {
-	std::string ScriptPath;
+	char ScriptPath[ECSComponentAssetPathMax] = {};
 	bool bEnabled = true;
 
-	std::unordered_map<std::string, std::string> Params;
+	FScriptParam Params[ECSMaxScriptParams] = {};
+	std::uint32_t ParamCount = 0;
 
-	void SetParam(const std::string& Key, const std::string& Value) { Params[Key] = Value; }
-	[[nodiscard]] const std::string* GetParam(const std::string& Key) const
+	void SetParam(const char* Key, const char* Value)
 	{
-		auto It = Params.find(Key);
-		return (It != Params.end()) ? &It->second : nullptr;
+		if (!Key || !Value) return;
+		for (std::uint32_t I = 0; I < ParamCount; ++I)
+		{
+			if (std::strcmp(Params[I].Key, Key) == 0)
+			{
+				std::strncpy(Params[I].Value, Value, ECSComponentAssetPathMax - 1);
+				Params[I].Value[ECSComponentAssetPathMax - 1] = '\0';
+				return;
+			}
+		}
+		if (ParamCount >= ECSMaxScriptParams) return;
+		std::uint32_t Idx = ParamCount++;
+		std::strncpy(Params[Idx].Key, Key, ECSComponentNameMax - 1);
+		Params[Idx].Key[ECSComponentNameMax - 1] = '\0';
+		std::strncpy(Params[Idx].Value, Value, ECSComponentAssetPathMax - 1);
+		Params[Idx].Value[ECSComponentAssetPathMax - 1] = '\0';
 	}
 
-	[[nodiscard]] bool IsValid() const { return !ScriptPath.empty(); }
+	[[nodiscard]] const char* GetParam(const char* Key) const
+	{
+		if (!Key) return nullptr;
+		for (std::uint32_t I = 0; I < ParamCount; ++I)
+		{
+			if (std::strcmp(Params[I].Key, Key) == 0)
+				return Params[I].Value;
+		}
+		return nullptr;
+	}
+
+	[[nodiscard]] bool IsValid() const { return ScriptPath[0] != '\0'; }
 };
+
+static_assert(std::is_trivially_copyable_v<FScriptComponent>, "FScriptComponent must be trivially copyable");
 
 } // namespace Maho

@@ -167,6 +167,8 @@ public:
 	[[nodiscard]] bool IsInitialized() const { return bInitialized; }
 
 private:
+	friend void RegisterGeneratedGCPooledTypes(FGCSystem& GC);
+
 	const char* GetName() const override { return "GC"; }
 
 	bool ExecuteStage(EEngineStage Stage) override;

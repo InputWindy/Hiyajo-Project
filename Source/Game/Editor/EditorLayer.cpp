@@ -112,7 +112,8 @@ constexpr const char* kWinBlueprint = ICON_FA_DIAGRAM_PROJECT " Blueprint";
 constexpr const char* kWinSequenceGraph = ICON_FA_SHARE_NODES " Sequence Graph";
 constexpr const char* kWinPlot = ICON_FA_CHART_LINE " Plot";
 constexpr const char* kWinWallpaper = ICON_FA_IMAGE " Wallpaper";
-constexpr const char* kWinTransientDetails = ICON_FA_SLIDERS "  Temporary Details";
+constexpr const char* kWinOutliner = ICON_FA_LIST " Scene Outliner";
+constexpr const char* kWinInspector = ICON_FA_MAGNIFYING_GLASS " Inspector";
 constexpr const char* kModalBusyTitle = "Busy";
 
 [[nodiscard]] const char* EngineStageLabel(EEngineStage Stage)
@@ -798,17 +799,31 @@ void FEditorLayer::RegisterBuiltinUIContributions()
 			DrawPlotPanel();
 		} });
 #endif
+	const FEditorUICatalog CatScene{ "Scene", 35 };
+	const FEditorUICatalog CatInspector{ "Inspector", 45 };
 	UIRegistry.RegisterDockPanel({
-		CatDetails,
-		"dock.temp_details",
-		kWinTransientDetails,
-		&bShowTransientDetails,
+		CatScene,
+		"dock.outliner",
+		kWinOutliner,
+		&bShowOutliner,
+		true,
 		false,
+		0,
+		[this](FEditorUIDrawContext&)
+		{
+			DrawSceneOutliner();
+		} });
+	UIRegistry.RegisterDockPanel({
+		CatInspector,
+		"dock.inspector",
+		kWinInspector,
+		&bShowInspector,
+		true,
 		true,
 		0,
 		[this](FEditorUIDrawContext&)
 		{
-			DrawTransientDetailsPanel();
+			DrawInspectorPanel();
 		} });
 
 	UIRegistry.RegisterModal({
@@ -869,13 +884,25 @@ void FEditorLayer::RegisterBuiltinUIContributions()
 	UIRegistry.RegisterMenuItem({
 		CatDebug,
 		"menu.debug.open_details",
-		"Open Temporary Details",
+		"Inspector Panel",
 		1,
 		[this](FEditorUIDrawContext& Ctx)
 		{
-			if (ImGui::MenuItem("Open Temporary Details") && Ctx.Registry)
+			if (ImGui::MenuItem("Inspector Panel") && Ctx.Registry)
 			{
-				Ctx.Registry->OpenDockPanel("dock.temp_details");
+				Ctx.Registry->OpenDockPanel("dock.inspector");
+			}
+		} });
+	UIRegistry.RegisterMenuItem({
+		CatDebug,
+		"menu.debug.open_outliner",
+		"Scene Outliner",
+		2,
+		[this](FEditorUIDrawContext& Ctx)
+		{
+			if (ImGui::MenuItem("Scene Outliner") && Ctx.Registry)
+			{
+				Ctx.Registry->OpenDockPanel("dock.outliner");
 			}
 		} });
 	UIRegistry.RegisterMenuItem({
@@ -1363,10 +1390,13 @@ void FEditorLayer::EnsureDefaultDockLayout(std::uint32_t DockspaceId)
 	ImGui::DockBuilderAddNode(DockspaceId, ImGuiDockNodeFlags_DockSpace);
 	ImGui::DockBuilderSetNodeSize(DockspaceId, ImGui::GetContentRegionAvail());
 
-	// Central: locked MyGame viewport. Bottom: Content Browser + Output Log tabs.
+	// Layout: Outliner (left 18%) | Main Viewport (center) | Bottom tabs (30%)
 	ImGuiID DockMain = DockspaceId;
+	ImGuiID DockLeft = ImGui::DockBuilderSplitNode(DockMain, ImGuiDir_Left, 0.18f, nullptr, &DockMain);
 	ImGuiID DockBottom = ImGui::DockBuilderSplitNode(DockMain, ImGuiDir_Down, 0.30f, nullptr, &DockMain);
 
+	ImGui::DockBuilderDockWindow(kWinOutliner, DockLeft);
+	ImGui::DockBuilderDockWindow(kWinInspector, DockLeft);
 	ImGui::DockBuilderDockWindow(kWinMainViewport, DockMain);
 	ImGui::DockBuilderDockWindow(kWinContent, DockBottom);
 	ImGui::DockBuilderDockWindow(kWinOutput, DockBottom);
@@ -1379,6 +1409,13 @@ void FEditorLayer::EnsureDefaultDockLayout(std::uint32_t DockspaceId)
 			static_cast<int>(Central->LocalFlags)
 			| static_cast<int>(ImGuiDockNodeFlags_NoTabBar)
 			| static_cast<int>(ImGuiDockNodeFlags_NoUndocking)));
+	}
+	if (ImGuiDockNode* Left = ImGui::DockBuilderGetNode(DockLeft))
+	{
+		Left->SetLocalFlags(static_cast<ImGuiDockNodeFlags>(
+			static_cast<int>(Left->LocalFlags)
+			| static_cast<int>(ImGuiDockNodeFlags_NoWindowMenuButton)
+			| static_cast<int>(ImGuiDockNodeFlags_NoCloseButton)));
 	}
 	if (ImGuiDockNode* Bottom = ImGui::DockBuilderGetNode(DockBottom))
 	{
@@ -1647,6 +1684,40 @@ void FEditorLayer::DrawMainViewportPanel()
 
 	ImGui::SetCursorScreenPos(Origin);
 	ImGui::Dummy(Canvas);
+
+	// Accept asset drop from Content Browser → spawn entity in world
+	if (ImGui::BeginDragDropTarget() && GApp)
+	{
+		if (const ImGuiPayload* Payload = ImGui::AcceptDragDropPayload("ASSET_PATH"))
+		{
+			const char* CatalogKey = static_cast<const char*>(Payload->Data);
+			if (CatalogKey && CatalogKey[0] != '\0')
+			{
+				if (FWorldLayer* WL = GApp->GetExtension<FWorldLayer>())
+				{
+					FECSWorld& World = WL->GetECSWorld();
+					FEntityManager& Mgr = World.GetEntityManager();
+
+					ComponentMaskType Mask = MakeComponentMask<FTransformComponent, FStaticMeshComponent>();
+					FEntityHandle NewEntity = Mgr.CreateEntity(Mask);
+
+					FTransformComponent* T = Mgr.GetComponent<FTransformComponent>(NewEntity);
+					if (T) T->SetIdentity();
+
+					FStaticMeshComponent* SM = Mgr.GetComponent<FStaticMeshComponent>(NewEntity);
+					if (SM)
+					{
+						std::strncpy(SM->MeshPath, CatalogKey, ECSComponentAssetPathMax - 1);
+						SM->MeshPath[ECSComponentAssetPathMax - 1] = '\0';
+					}
+
+					// Auto-select so the Inspector immediately shows the new entity
+					SelectedEntity = NewEntity;
+				}
+			}
+		}
+		ImGui::EndDragDropTarget();
+	}
 	if (GApp)
 	{
 		FEditorUIDrawContext Ctx = MakeUIDrawContext(*GApp);
@@ -1655,15 +1726,408 @@ void FEditorLayer::DrawMainViewportPanel()
 	ImGui::End();
 }
 
-void FEditorLayer::DrawTransientDetailsPanel()
+void FEditorLayer::DrawSceneOutliner()
 {
-	if (!BeginEditorDockPanel(kWinTransientDetails, &bShowTransientDetails))
+	if (!BeginEditorDockPanel(kWinOutliner, &bShowOutliner))
 	{
 		ImGui::End();
 		return;
 	}
-	ImGui::TextUnformatted("Temporary Details (DockPanel, not Modal).");
-	ImGui::TextDisabled("Opened via Debug → Open Temporary Details / OpenDockPanel.");
+
+	if (!GApp)
+	{
+		ImGui::TextDisabled("App not ready.");
+		ImGui::End();
+		return;
+	}
+
+	FWorldLayer* WorldLayer = GApp->GetExtension<FWorldLayer>();
+	if (!WorldLayer)
+	{
+		ImGui::TextDisabled("No WorldLayer loaded.");
+		ImGui::End();
+		return;
+	}
+
+	FECSWorld& ECSWorld = WorldLayer->GetECSWorld();
+	FEntityManager& Mgr = ECSWorld.GetEntityManager();
+
+	// ── Delete key handling ──
+	if (SelectedEntity.IsValid() && ImGui::IsKeyPressed(ImGuiKey_Delete) && ImGui::IsWindowFocused())
+	{
+		if (ECSWorld.IsPersistentEntity(SelectedEntity))
+		{
+			ECSWorld.DestroyPersistentEntity(SelectedEntity);
+		}
+		else
+		{
+			Mgr.DestroyEntity(SelectedEntity);
+		}
+		SelectedEntity = FEntityHandle{};
+	}
+
+	// ── World root tree node ──
+	ImGuiTreeNodeFlags RootFlags = ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_Framed;
+
+	if (ImGui::TreeNodeEx("World", RootFlags))
+	{
+		// ── Persistent Entities ──
+		ImGuiTreeNodeFlags PersFlags = ImGuiTreeNodeFlags_DefaultOpen;
+		const auto& PersEntities = ECSWorld.GetPersistentEntities();
+
+		int PersId = 1000;
+		if (ImGui::TreeNodeEx("Persistent Entities", PersFlags, "%s", ICON_FA_CAMERA " Persistent Entities"))
+		{
+			for (const FEntityHandle& Handle : PersEntities)
+			{
+				if (!Mgr.IsValid(Handle)) continue;
+
+				char Label[128];
+				std::snprintf(Label, sizeof(Label), "Entity %u (Gen %u)##Pers%u",
+					Handle.Index, Handle.Generation, ++PersId);
+
+				ImGuiTreeNodeFlags LeafFlags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen
+					| (Handle.Index == SelectedEntity.Index && Handle.Generation == SelectedEntity.Generation
+						? ImGuiTreeNodeFlags_Selected : 0);
+
+				ImGui::TreeNodeEx(Label, LeafFlags);
+				if (ImGui::IsItemClicked())
+				{
+					SelectedEntity = Handle;
+				}
+			}
+			ImGui::TreePop();
+		}
+
+		// ── Level Entities ──
+		ImGuiTreeNodeFlags LevelFlags = ImGuiTreeNodeFlags_DefaultOpen;
+		int LevelId = 2000;
+
+		if (ImGui::TreeNodeEx("Level Entities", LevelFlags, "%s", ICON_FA_CUBE " Level Entities"))
+		{
+			Mgr.ForEachEntity([&](FEntityHandle Handle)
+			{
+				if (ECSWorld.IsPersistentEntity(Handle)) return;
+
+				char Label[128];
+				std::snprintf(Label, sizeof(Label), "Entity %u (Gen %u)##Level%u",
+					Handle.Index, Handle.Generation, ++LevelId);
+
+				ImGuiTreeNodeFlags LeafFlags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen
+					| (Handle.Index == SelectedEntity.Index && Handle.Generation == SelectedEntity.Generation
+						? ImGuiTreeNodeFlags_Selected : 0);
+
+				ImGui::TreeNodeEx(Label, LeafFlags);
+				if (ImGui::IsItemClicked())
+				{
+					SelectedEntity = Handle;
+				}
+			});
+			ImGui::TreePop();
+		}
+
+		ImGui::TreePop();
+	}
+	ImGui::End();
+}
+
+void FEditorLayer::DrawInspectorPanel()
+{
+	if (!BeginEditorDockPanel(kWinInspector, &bShowInspector))
+	{
+		ImGui::End();
+		return;
+	}
+
+	if (!GApp)
+	{
+		ImGui::TextDisabled("App not ready.");
+		ImGui::End();
+		return;
+	}
+
+	FWorldLayer* WorldLayer = GApp->GetExtension<FWorldLayer>();
+	if (!WorldLayer)
+	{
+		ImGui::TextDisabled("No WorldLayer loaded.");
+		ImGui::End();
+		return;
+	}
+
+	FECSWorld& ECSWorld = WorldLayer->GetECSWorld();
+	FEntityManager& Mgr = ECSWorld.GetEntityManager();
+
+	if (!SelectedEntity.IsValid() || !Mgr.IsValid(SelectedEntity))
+	{
+		ImGui::TextDisabled("Select an entity in the Outliner.");
+		ImGui::End();
+		return;
+	}
+
+	ComponentMaskType Mask = Mgr.GetComponentMask(SelectedEntity);
+	bool bIsPersistent = ECSWorld.IsPersistentEntity(SelectedEntity);
+
+	char Header[128];
+	std::snprintf(Header, sizeof(Header), "%sEntity %u  (Gen %u)",
+		bIsPersistent ? ICON_FA_THUMBTACK " " : "", SelectedEntity.Index, SelectedEntity.Generation);
+	ImGui::TextUnformatted(Header);
+	ImGui::Separator();
+
+	// ═══════════════════════════════════════════
+	// Add Component button
+	// ═══════════════════════════════════════════
+	if (ImGui::Button("+ Add Component"))
+		ImGui::OpenPopup("AddComponentPopup");
+	if (ImGui::BeginPopup("AddComponentPopup"))
+	{
+		struct FCompEntry { const char* Name; std::size_t TypeId; };
+		FCompEntry Entries[] = {
+			{"Static Mesh",  GetComponentTypeId<FStaticMeshComponent>()},
+			{"Skeleton",     GetComponentTypeId<FSkeletonComponent>()},
+			{"Animation",    GetComponentTypeId<FAnimationComponent>()},
+			{"Camera",       GetComponentTypeId<FCameraComponent>()},
+			{"Material",     GetComponentTypeId<FMaterialComponent>()},
+			{"Script",       GetComponentTypeId<FScriptComponent>()},
+		};
+		for (const auto& E : Entries)
+		{
+			bool bHas = (Mgr.GetComponentMask(SelectedEntity).test(E.TypeId));
+			if (bHas)
+			{
+				ImGui::BeginDisabled();
+				ImGui::MenuItem(E.Name);
+				ImGui::EndDisabled();
+			}
+			else if (ImGui::MenuItem(E.Name))
+			{
+				// Add component deferred
+				if (E.TypeId == GetComponentTypeId<FStaticMeshComponent>())
+					Mgr.AddComponent(SelectedEntity, FStaticMeshComponent{});
+				else if (E.TypeId == GetComponentTypeId<FSkeletonComponent>())
+					Mgr.AddComponent(SelectedEntity, FSkeletonComponent{});
+				else if (E.TypeId == GetComponentTypeId<FAnimationComponent>())
+					Mgr.AddComponent(SelectedEntity, FAnimationComponent{});
+				else if (E.TypeId == GetComponentTypeId<FCameraComponent>())
+					Mgr.AddComponent(SelectedEntity, FCameraComponent{});
+				else if (E.TypeId == GetComponentTypeId<FMaterialComponent>())
+					Mgr.AddComponent(SelectedEntity, FMaterialComponent{});
+				else if (E.TypeId == GetComponentTypeId<FScriptComponent>())
+					Mgr.AddComponent(SelectedEntity, FScriptComponent{});
+			}
+		}
+		ImGui::EndPopup();
+	}
+
+	ImGui::Separator();
+
+	// ═══════════════════════════════════════════
+	// FTransformComponent
+	// ═══════════════════════════════════════════
+	if (Mask.test(GetComponentTypeId<FTransformComponent>()))
+	{
+		if (ImGui::CollapsingHeader(ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT " Transform", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			FTransformComponent* T = Mgr.GetComponent<FTransformComponent>(SelectedEntity);
+			if (T)
+			{
+				float Pos[3] = { T->LocalToWorld[12], T->LocalToWorld[13], T->LocalToWorld[14] };
+				if (ImGui::DragFloat3("Position", Pos, 0.1f))
+				{
+					T->LocalToWorld[12] = Pos[0];
+					T->LocalToWorld[13] = Pos[1];
+					T->LocalToWorld[14] = Pos[2];
+				}
+				float Scale[3] = { T->LocalToWorld[0], T->LocalToWorld[5], T->LocalToWorld[10] };
+				if (ImGui::DragFloat3("Scale", Scale, 0.01f, 0.01f, 100.0f))
+				{
+					T->LocalToWorld[0] = Scale[0];
+					T->LocalToWorld[5] = Scale[1];
+					T->LocalToWorld[10] = Scale[2];
+				}
+			}
+		}
+	}
+
+	// ═══════════════════════════════════════════
+	// FStaticMeshComponent
+	// ═══════════════════════════════════════════
+	if (Mask.test(GetComponentTypeId<FStaticMeshComponent>()))
+	{
+		if (ImGui::CollapsingHeader(ICON_FA_CUBE " Static Mesh", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			FStaticMeshComponent* C = Mgr.GetComponent<FStaticMeshComponent>(SelectedEntity);
+			if (C)
+			{
+				ImGui::InputText("Mesh Path", C->MeshPath, ECSComponentAssetPathMax);
+				if (ImGui::BeginDragDropTarget())
+				{
+					if (const ImGuiPayload* Payload = ImGui::AcceptDragDropPayload("ASSET_PATH"))
+					{
+						const char* Path = static_cast<const char*>(Payload->Data);
+						if (Path) std::strncpy(C->MeshPath, Path, ECSComponentAssetPathMax - 1);
+					}
+					ImGui::EndDragDropTarget();
+				}
+			}
+		}
+	}
+
+	// ═══════════════════════════════════════════
+	// FSkeletonComponent
+	// ═══════════════════════════════════════════
+	if (Mask.test(GetComponentTypeId<FSkeletonComponent>()))
+	{
+		if (ImGui::CollapsingHeader(ICON_FA_BONE " Skeleton"))
+		{
+			FSkeletonComponent* C = Mgr.GetComponent<FSkeletonComponent>(SelectedEntity);
+			if (C)
+			{
+				ImGui::InputText("Skeleton Path", C->SkeletonPath, ECSComponentAssetPathMax);
+				if (ImGui::BeginDragDropTarget())
+				{
+					if (const ImGuiPayload* Payload = ImGui::AcceptDragDropPayload("ASSET_PATH"))
+					{
+						const char* Path = static_cast<const char*>(Payload->Data);
+						if (Path) std::strncpy(C->SkeletonPath, Path, ECSComponentAssetPathMax - 1);
+					}
+					ImGui::EndDragDropTarget();
+				}
+			}
+		}
+	}
+
+	// ═══════════════════════════════════════════
+	// FAnimationComponent
+	// ═══════════════════════════════════════════
+	if (Mask.test(GetComponentTypeId<FAnimationComponent>()))
+	{
+		if (ImGui::CollapsingHeader(ICON_FA_FILM " Animation"))
+		{
+			FAnimationComponent* C = Mgr.GetComponent<FAnimationComponent>(SelectedEntity);
+			if (C)
+			{
+				ImGui::InputText("Clip Path", C->AnimationClipPath, ECSComponentAssetPathMax);
+				ImGui::DragFloat("Time", &C->Time, 0.01f);
+				ImGui::DragFloat("Speed", &C->Speed, 0.1f);
+				ImGui::Checkbox("Loop", &C->bLoop);
+				ImGui::Checkbox("Playing", &C->bPlaying);
+				if (ImGui::BeginDragDropTarget())
+				{
+					if (const ImGuiPayload* Payload = ImGui::AcceptDragDropPayload("ASSET_PATH"))
+					{
+						const char* Path = static_cast<const char*>(Payload->Data);
+						if (Path) std::strncpy(C->AnimationClipPath, Path, ECSComponentAssetPathMax - 1);
+					}
+					ImGui::EndDragDropTarget();
+				}
+			}
+		}
+	}
+
+	// ═══════════════════════════════════════════
+	// FCameraComponent
+	// ═══════════════════════════════════════════
+	if (Mask.test(GetComponentTypeId<FCameraComponent>()))
+	{
+		if (ImGui::CollapsingHeader(ICON_FA_CAMERA " Camera", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			FCameraComponent* C = Mgr.GetComponent<FCameraComponent>(SelectedEntity);
+			if (C)
+			{
+				ImGui::DragFloat("FOV", &C->FOV, 1.0f, 1.0f, 179.0f);
+				ImGui::DragFloat("Near Plane", &C->NearPlane, 0.01f, 0.001f, C->FarPlane - 0.001f);
+				ImGui::DragFloat("Far Plane", &C->FarPlane, 1.0f, C->NearPlane + 0.01f, 10000.0f);
+				ImGui::Checkbox("Main Camera", &C->bMainCamera);
+				ImGui::Checkbox("Orthographic", &C->bOrthographic);
+				if (C->bOrthographic)
+					ImGui::DragFloat("Ortho Size", &C->OrthoSize, 0.1f);
+			}
+		}
+	}
+
+	// ═══════════════════════════════════════════
+	// FMaterialComponent
+	// ═══════════════════════════════════════════
+	if (Mask.test(GetComponentTypeId<FMaterialComponent>()))
+	{
+		if (ImGui::CollapsingHeader(ICON_FA_PALETTE " Material"))
+		{
+			FMaterialComponent* C = Mgr.GetComponent<FMaterialComponent>(SelectedEntity);
+			if (C)
+			{
+				ImGui::InputText("Shader Path", C->ShaderPath, ECSComponentAssetPathMax);
+				if (ImGui::BeginDragDropTarget())
+				{
+					if (const ImGuiPayload* Payload = ImGui::AcceptDragDropPayload("ASSET_PATH"))
+					{
+						const char* Path = static_cast<const char*>(Payload->Data);
+						if (Path) std::strncpy(C->ShaderPath, Path, ECSComponentAssetPathMax - 1);
+					}
+					ImGui::EndDragDropTarget();
+				}
+
+				if (C->OverrideCount > 0)
+				{
+					ImGui::SeparatorText("Property Overrides");
+					for (std::uint32_t I = 0; I < C->OverrideCount; ++I)
+					{
+						ImGui::PushID(static_cast<int>(I));
+						ImGui::TextUnformatted(C->Overrides[I].Name);
+						ImGui::SameLine(80);
+						char Label[32];
+						std::snprintf(Label, sizeof(Label), "##Prop%d", I);
+						ImGui::DragFloat4(Label, C->Overrides[I].Data, 0.01f);
+						ImGui::PopID();
+					}
+				}
+
+				if (C->TextureOverrideCount > 0)
+				{
+					ImGui::SeparatorText("Texture Overrides");
+					for (std::uint32_t I = 0; I < C->TextureOverrideCount; ++I)
+					{
+						ImGui::PushID(static_cast<int>(I + 100));
+						ImGui::TextUnformatted(C->TextureOverrides[I].Name);
+						ImGui::SameLine(80);
+						ImGui::TextUnformatted(C->TextureOverrides[I].Path);
+						ImGui::PopID();
+					}
+				}
+			}
+		}
+	}
+
+	// ═══════════════════════════════════════════
+	// FScriptComponent
+	// ═══════════════════════════════════════════
+	if (Mask.test(GetComponentTypeId<FScriptComponent>()))
+	{
+		if (ImGui::CollapsingHeader(ICON_FA_CODE " Script"))
+		{
+			FScriptComponent* C = Mgr.GetComponent<FScriptComponent>(SelectedEntity);
+			if (C)
+			{
+				ImGui::InputText("Script Path", C->ScriptPath, ECSComponentAssetPathMax);
+				ImGui::Checkbox("Enabled", &C->bEnabled);
+
+				if (C->ParamCount > 0)
+				{
+					ImGui::SeparatorText("Parameters");
+					for (std::uint32_t I = 0; I < C->ParamCount; ++I)
+					{
+						ImGui::PushID(static_cast<int>(I + 200));
+						ImGui::TextUnformatted(C->Params[I].Key);
+						ImGui::SameLine(100);
+						char ValLabel[64];
+						std::snprintf(ValLabel, sizeof(ValLabel), "##Param%d", I);
+						ImGui::InputText(ValLabel, C->Params[I].Value, ECSComponentAssetPathMax);
+						ImGui::PopID();
+					}
+				}
+			}
+		}
+	}
+
 	ImGui::End();
 }
 
@@ -2462,6 +2926,15 @@ void FEditorLayer::DrawContentBrowserTiles()
 				Entry.bDirty ? "\n(unsaved)" : "");
 		}
 
+		// Drag-drop source: allow dragging assets to Inspector fields
+		if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID))
+		{
+			const std::string& SoftPathStr = Entry.CatalogKey;
+			ImGui::SetDragDropPayload("ASSET_PATH", SoftPathStr.c_str(), SoftPathStr.size() + 1);
+			ImGui::Text("%s %s", ResourceTypeGlyph(Entry.Type), Entry.DisplayName.c_str());
+			ImGui::EndDragDropSource();
+		}
+
 		ImDrawList* DrawList = ImGui::GetWindowDrawList();
 		DrawList->AddRectFilled(
 			Screen0,
@@ -2554,9 +3027,11 @@ void FEditorLayer::RefreshContentListing()
 	if (Resources)
 	{
 		const std::string Folder = FPaths::NormalizePackagePath(CurrentVirtualPath);
+		std::size_t ResourceCount = 0;
 		Resources->ForEachRegisteredResource(
 			[&](const std::string& CatalogKey, const FObjectRef& ResourceRef)
 			{
+				++ResourceCount;
 				FSoftObjectPath SoftPath;
 				if (!SoftPath.TrySetPath(CatalogKey) || !SoftPath.IsValid())
 				{
@@ -2580,6 +3055,16 @@ void FEditorLayer::RefreshContentListing()
 				Entry.bDirty = Resource->IsDirty();
 				AssetEntries.push_back(std::move(Entry));
 			});
+
+		static std::size_t sLastResourceCount = ~std::size_t{0};
+		if (ResourceCount != sLastResourceCount)
+		{
+			sLastResourceCount = ResourceCount;
+			AppendOutput(
+				"ContentBrowser: " + std::to_string(ResourceCount)
+				+ " resources in catalog, showing " + std::to_string(AssetEntries.size())
+				+ " under '" + Folder + "'");
+		}
 	}
 
 	std::sort(
@@ -2637,9 +3122,16 @@ void FEditorLayer::TickStartupCassetLoad()
 
 	if (!bStartupCassetScanDone)
 	{
-		const std::string Ext = FPaths::GetPackageExtension();
+			const std::string ExtRaw = FPaths::GetPackageExtension();
+			// Strip leading '.' for suffix comparison (e.g. ".casset" → "casset").
+			const std::string Ext = (ExtRaw.size() > 1 && ExtRaw[0] == '.')
+				? ExtRaw.substr(1)
+				: ExtRaw;
+
+		std::size_t MountCount = 0;
 		for (const FPathMount& Mount : FPaths::GetMountPoints())
 		{
+			++MountCount;
 			std::error_code ErrorCode;
 			const std::filesystem::path DiskRoot = PathFromUtf8(Mount.DiskRoot);
 			if (!std::filesystem::is_directory(DiskRoot, ErrorCode) || ErrorCode)
@@ -2691,6 +3183,9 @@ void FEditorLayer::TickStartupCassetLoad()
 			}
 		}
 		bStartupCassetScanDone = true;
+		AppendOutput(
+			"Scanned " + std::to_string(MountCount) + " mount(s), found "
+			+ std::to_string(StartupCassetPaths.size()) + " .casset file(s)");
 		if (StartupCassetPaths.empty())
 		{
 			bStartupCassetLoadActive = false;
@@ -2859,9 +3354,12 @@ void FEditorLayer::ConfirmImporterDialog()
 	ManualImportJobs.push_back(std::move(Job));
 	ManualImportKickIndex = 0;
 	ManualImportCompleted = 0;
+	ManualImportFailed = 0;
 	ManualImportCurrentName.clear();
 	bManualImportActive = true;
-	AppendOutput("Import queued: " + ImporterDialog.SourcePath);
+	AppendOutput(
+		"Import queued [type=" + std::to_string(static_cast<int>(ImporterDialog.TypeHint))
+		+ "]: " + ImporterDialog.SourcePath);
 }
 
 void FEditorLayer::TickManualContentImport()
@@ -2893,6 +3391,7 @@ void FEditorLayer::TickManualContentImport()
 		if (Resources->FindRegisteredResource(CatalogKey))
 		{
 			AppendOutput("Import skipped — already registered: " + CatalogKey, spdlog::level::warn);
+			Job.SoftPath = FSoftObjectPath(Job.PackagePath, Job.ObjectName);
 			Job.bKicked = true;
 			continue;
 		}
@@ -2906,10 +3405,20 @@ void FEditorLayer::TickManualContentImport()
 		Job.SoftPath = EnqueueTypedImport(*Resources, std::move(Config), Job.TypeHint);
 		Job.bKicked = true;
 		ManualImportCurrentName = PathToUtf8(PathFromUtf8(Job.SourcePath).filename());
+		if (Job.SoftPath.IsValid())
+		{
+			AppendOutput("Import kicked: " + Job.SoftPath.GetAssetPathString()
+				+ " <- " + Job.SourcePath);
+		}
+		else
+		{
+			AppendOutput("Import kick FAILED: " + Job.SourcePath, spdlog::level::err);
+		}
 		++KickedThisFrame;
 	}
 
 	ManualImportCompleted = 0;
+	ManualImportFailed = 0;
 	bool bAnyPending = false;
 	for (FManualImportJob& Job : ManualImportJobs)
 	{
@@ -2920,21 +3429,33 @@ void FEditorLayer::TickManualContentImport()
 		}
 		if (!Job.SoftPath.IsValid())
 		{
-			++ManualImportCompleted;
+			++ManualImportFailed;
+			AppendOutput("Import FAILED (invalid SoftPath): " + Job.SourcePath, spdlog::level::err);
 			continue;
 		}
 		const EResourceLoadState State = Resources->GetLoadState(Job.SoftPath);
-		if (State == EResourceLoadState::Pending)
+		switch (State)
 		{
+		case EResourceLoadState::Pending:
 			bAnyPending = true;
 			if (ManualImportCurrentName.empty())
 			{
 				ManualImportCurrentName = PathToUtf8(PathFromUtf8(Job.SourcePath).filename());
 			}
-		}
-		else
-		{
+			break;
+		case EResourceLoadState::Ready:
 			++ManualImportCompleted;
+			AppendOutput("Import OK: " + Job.SourcePath, spdlog::level::info);
+			break;
+		case EResourceLoadState::Failed:
+		case EResourceLoadState::Invalid:
+		default:
+			++ManualImportFailed;
+			AppendOutput(
+				"Import FAILED (state=" + std::to_string(static_cast<int>(State))
+				+ "): " + Job.SourcePath,
+				spdlog::level::err);
+			break;
 		}
 	}
 
@@ -2949,8 +3470,11 @@ void FEditorLayer::TickManualContentImport()
 		ManualImportCurrentName.clear();
 		RefreshContentListing();
 		AppendOutput(
-			"Import finished: " + std::to_string(ManualImportCompleted) + "/"
-			+ std::to_string(ManualImportJobs.size()));
+			"Import finished: " + std::to_string(ManualImportCompleted) + " ok"
+			+ (ManualImportFailed > 0
+				? ", " + std::to_string(ManualImportFailed) + " failed"
+				: "")
+			+ " / " + std::to_string(ManualImportJobs.size()));
 	}
 }
 

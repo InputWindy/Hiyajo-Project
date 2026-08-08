@@ -58,6 +58,7 @@ set(GAME_SHADERS_DIR "${GAME_ROOT}/Shaders")
 set(GAME_PLUGINS_DIR "${GAME_ROOT}/Plugins")
 set(GAME_CONFIG_DIR "${GAME_ROOT}/Config")
 set(GAME_SCRIPTS_DIR "${GAME_ROOT}/Scripts")
+set(GAME_CONTENT_DIR "${GAME_ROOT}/Content")
 set(GAME_GENERATED_DIR "${GAME_ROOT}/Intermediate/Generated")
 
 maho_collect_sources(GAME_SOURCES "${GAME_SOURCE_DIR}")
@@ -121,6 +122,16 @@ if(IS_DIRECTORY "${GAME_CONFIG_DIR}")
 		VERBATIM
 	)
 endif()
+if(IS_DIRECTORY "${GAME_CONTENT_DIR}")
+	add_custom_command(TARGET Hiyajo-Project POST_BUILD
+		COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:Hiyajo-Project>/Content"
+		COMMAND ${CMAKE_COMMAND} -E copy_directory
+			"${GAME_CONTENT_DIR}"
+			"$<TARGET_FILE_DIR:Hiyajo-Project>/Content"
+		COMMENT "Copy project Content (casset, etc.)"
+		VERBATIM
+	)
+endif()
 if(IS_DIRECTORY "${GAME_SCRIPTS_DIR}")
 	add_custom_command(TARGET Hiyajo-Project POST_BUILD
 		COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:Hiyajo-Project>/Scripts"
@@ -171,5 +182,6 @@ maho_install_directory("${GAME_SHADERS_DIR}" "Shaders")
 maho_install_directory("${GAME_PLUGINS_DIR}" "Project/Plugins")
 maho_install_directory("${GAME_CONFIG_DIR}" "Config")
 maho_install_directory("${GAME_SCRIPTS_DIR}" "Scripts")
+maho_install_directory("${GAME_CONTENT_DIR}" "Content")
 
 # Packaging is done via project package.bat → Tools/package_ui.py (cmake --install).

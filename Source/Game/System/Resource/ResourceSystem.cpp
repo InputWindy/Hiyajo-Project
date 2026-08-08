@@ -16,7 +16,6 @@
 
 #include <cctype>
 #include <filesystem>
-#include <fstream>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -259,6 +258,15 @@ std::string FResourceSystem::NormalizeResourceVirtualPath(const std::string& Vir
 			Ch = '/';
 		}
 	}
+
+	// Convert UObject::GetPathName slash format "Package/ObjectName" to
+	// SoftPath dot format "Package.ObjectName" so that TrySetPath succeeds.
+	const std::size_t LastSlash = Path.find_last_of('/');
+	if (LastSlash != std::string::npos && LastSlash > 0 && LastSlash + 1 < Path.size())
+	{
+		Path[LastSlash] = '.';
+	}
+
 	return Path;
 }
 
@@ -467,6 +475,11 @@ void FResourceSystem::ProcessReadyIO()
 		}
 	}
 
+	if (!ReadyKeys.empty())
+	{
+		MAHO_CORE_INFO("ProcessReadyIO: {} pending, {} ready", PendingIO.size(), ReadyKeys.size());
+	}
+
 	// At most one Apply per tick so large .casset hydrates do not stall the frame.
 	std::size_t Applied = 0;
 	constexpr std::size_t kMaxAppliesPerTick = 1;
@@ -486,15 +499,21 @@ void FResourceSystem::ProcessReadyIO()
 		FPendingIO Pending = std::move(It->second);
 		PendingIO.erase(It);
 
+		MAHO_CORE_INFO("ProcessReadyIO: processing '{}' (src='{}')",
+			Pending.SoftPath.GetAssetPathString(), Pending.Config.SourcePath);
+
 		if (!Pending.Handle.IsValid() || Pending.Handle.HasFailed())
 		{
 			MAHO_CORE_ERROR(
-				"FResourceSystem::ProcessReadyIO: BulkData failed for '{}'",
-				Pending.Config.SourcePath);
+				"FResourceSystem::ProcessReadyIO: BulkData failed for '{}' (isValid={}, hasFailed={})",
+				Pending.Config.SourcePath,
+				Pending.Handle.IsValid(),
+				Pending.Handle.HasFailed());
 			ReleaseBulkLoad(Pending.Handle);
 			continue;
 		}
 
+		MAHO_CORE_INFO("ProcessReadyIO: Handle Succeeded, taking BulkData...");
 		FResourceBulkData Bulk;
 		if (!TakeBulkData(Pending.Handle, Bulk))
 		{
@@ -505,6 +524,7 @@ void FResourceSystem::ProcessReadyIO()
 			continue;
 		}
 
+		MAHO_CORE_INFO("ProcessReadyIO: BulkData taken ({} bytes), calling ApplyBulkData...", Bulk.Bytes.size());
 		const bool bOk = Pending.Importer
 			&& Pending.Importer->ApplyBulkData(*this, Pending.Config, Bulk);
 		ReleaseBulkLoad(Pending.Handle);
@@ -515,6 +535,10 @@ void FResourceSystem::ProcessReadyIO()
 			MAHO_CORE_ERROR(
 				"FResourceSystem::ProcessReadyIO: Apply failed for '{}'",
 				Pending.Config.SourcePath);
+		}
+		else
+		{
+			MAHO_CORE_INFO("ProcessReadyIO: Apply succeeded for '{}'", Pending.Config.SourcePath);
 		}
 	}
 }
@@ -562,7 +586,8 @@ FSoftObjectPath FResourceSystem::EnqueueImport(
 
 	if (!IsInitialized() || !bAcceptingNewWork)
 	{
-		MAHO_CORE_ERROR("FResourceSystem::EnqueueImport: not accepting work");
+		MAHO_CORE_ERROR("FResourceSystem::EnqueueImport: not accepting work (init={}, bAccepting={})",
+			IsInitialized(), bAcceptingNewWork);
 		return {};
 	}
 
@@ -576,7 +601,9 @@ FSoftObjectPath FResourceSystem::EnqueueImport(
 	if (Config.PackagePath.empty() || Config.ObjectName.empty() || Config.SourcePath.empty())
 	{
 		MAHO_CORE_ERROR(
-			"FResourceSystem::EnqueueImport: PackagePath/ObjectName/SourcePath required");
+			"FResourceSystem::EnqueueImport: PackagePath/ObjectName/SourcePath required "
+			"(Pkg='{}' Obj='{}' Src='{}')",
+			Config.PackagePath, Config.ObjectName, Config.SourcePath);
 		return {};
 	}
 
@@ -584,11 +611,17 @@ FSoftObjectPath FResourceSystem::EnqueueImport(
 	const std::string Key = SoftPathKey(SoftPath);
 	if (Key.empty())
 	{
+		MAHO_CORE_ERROR(
+			"FResourceSystem::EnqueueImport: SoftPathKey empty "
+			"(Pkg='{}' Obj='{}')",
+			Config.PackagePath, Config.ObjectName);
 		return {};
 	}
 
 	if (PendingIO.find(Key) != PendingIO.end())
 	{
+		MAHO_CORE_INFO(
+			"FResourceSystem::EnqueueImport: already pending '{}'", Key);
 		return SoftPath;
 	}
 
@@ -601,6 +634,9 @@ FSoftObjectPath FResourceSystem::EnqueueImport(
 	FTransferHandle Handle = RequestBulkLoad(Config.SourcePath);
 	if (!Handle.IsValid())
 	{
+		MAHO_CORE_ERROR(
+			"FResourceSystem::EnqueueImport: RequestBulkLoad failed for '{}'",
+			Config.SourcePath);
 		return {};
 	}
 

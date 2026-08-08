@@ -292,8 +292,29 @@ FObjectRef FSoftObjectPath::TryLoad() const
 	{
 		return FObjectRef();
 	}
-	// Stub: actual loading is done by FResourceSystem
-	return FObjectRef();
+
+	FGCSystem* GC = Detail::GetGCSystem();
+	if (!GC)
+	{
+		return FObjectRef();
+	}
+
+	// Fast path: look up by full object path (PackageName.AssetName)
+	FObjectRef Found = GC->FindObject(GetAssetPathString());
+	if (Found)
+	{
+		return Found;
+	}
+
+	// Fallback: find package first, then object within it
+	FObjectRef PackageRef = GC->FindPackage(PackageName);
+	UPackage* Package = PackageRef.Cast<UPackage>();
+	if (!Package)
+	{
+		return FObjectRef();
+	}
+
+	return Package->FindObject(AssetName);
 }
 
 } // namespace Maho

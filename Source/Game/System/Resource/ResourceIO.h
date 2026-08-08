@@ -415,7 +415,6 @@ bool FResourceSystem::ApplyTypedBulkData(FResourceImportConfig& Config, FResourc
 		AbortFailedImport(*Resource);
 		return false;
 	}
-
 	Resource->MarkDirty();
 	if (UPackage* Package = Resource->GetPackage().Cast<UPackage>())
 	{

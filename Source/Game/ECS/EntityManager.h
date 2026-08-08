@@ -100,6 +100,31 @@ public:
 	[[nodiscard]] std::size_t GetEntityCount() const { return EntityCount; }
 	[[nodiscard]] std::size_t GetArchetypeCount() const { return Archetypes.size(); }
 
+	/** Iterate all alive entities. Callback receives FEntityHandle. */
+	template <typename F>
+	void ForEachEntity(F&& Func) const
+	{
+		for (std::size_t I = 0; I < EntitySlots.size(); ++I)
+		{
+			const FEntitySlot& Slot = EntitySlots[I];
+			if (Slot.bAlive)
+			{
+				Func(FEntityHandle::Make(static_cast<std::uint32_t>(I), Slot.Generation));
+			}
+		}
+	}
+
+	/** Get the component mask for a given entity. */
+	[[nodiscard]] ComponentMaskType GetComponentMask(FEntityHandle Handle) const
+	{
+		FEntityLocation Loc = LocateEntity(Handle);
+		if (Loc.Chunk == nullptr || Loc.ArchetypeIndex >= Archetypes.size())
+		{
+			return {};
+		}
+		return Archetypes[Loc.ArchetypeIndex].Archetype->Mask;
+	}
+
 private:
 	struct FEntityLocation
 	{

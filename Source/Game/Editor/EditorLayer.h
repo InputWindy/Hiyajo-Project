@@ -4,6 +4,11 @@
 #include "Game/Editor/EditorUIRegistry.h"
 #include "Game/System/Resource/ResourceSystem.h"
 #include "Game/Object/Object.h"
+#include "Game/ECS/World.h"
+#include "Game/ECS/EntityManager.h"
+#include "Game/ECS/EntityHandle.h"
+#include "Game/World/WorldLayer.h"
+#include "Game/Components/AllComponents.h"
 #include <Core/Sequencer/EngineExtension.h>
 #include <Core/System/Log.h>
 #include <Core/Sequencer/EngineStage.h>
@@ -117,6 +122,8 @@ private:
 	void DrawSequenceGraphPanel(FApp& App);
 	void DrawPlotPanel();
 	void DrawTransientDetailsPanel();
+	void DrawSceneOutliner();
+	void DrawInspectorPanel();
 	void DrawWallpaperPanel();
 	void DrawFileDialogs();
 	void EnsureSequenceGraphNodeLayout();
@@ -170,7 +177,9 @@ private:
 	bool bShowSequenceGraphPanel = true;
 	bool bShowPlotPanel = true;
 	bool bShowWallpaperPanel = true;
-	bool bShowTransientDetails = false;
+	bool bShowOutliner = true;
+	bool bShowInspector = true;
+	FEntityHandle SelectedEntity{};
 	bool bShowDummyDockA = false;
 	bool bShowDummyDockB = false;
 	bool bAutoScrollOutput = true;
@@ -201,6 +210,7 @@ private:
 	std::vector<FManualImportJob> ManualImportJobs;
 	std::size_t ManualImportKickIndex = 0;
 	std::size_t ManualImportCompleted = 0;
+	std::size_t ManualImportFailed = 0;
 	std::string ManualImportCurrentName;
 	bool bWasSavePackageBusy = false;
 	FImporterDialogState ImporterDialog;
