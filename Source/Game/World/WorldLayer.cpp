@@ -28,25 +28,25 @@ bool FWorldLayer::ExecuteStage(Maho::EEngineStage Stage)
 		if (!bWorldReady)
 		{
 			// Set up simulation group with systems
-			auto& SimGroup = ECSWorld.GetOrCreateSystemGroup<Maho::FSimulationSystemGroup>();
+			auto& SimGroup = World.GetOrCreateSystemGroup<Maho::FSimulationSystemGroup>();
 			SimGroup.AddSystem<FMovementSystem>();
 			SimGroup.AddSystem<FCameraSystem>();
 
 			// Spawn demo entity with a TransformComponent.
-			Maho::FEntityHandle Handle = ECSWorld.CreateEntity();
+			Maho::FEntityHandle Handle = World.CreateEntity();
 			Maho::FTransformComponent Transform;
 			Transform.SetIdentity();
-			ECSWorld.SetComponent<Maho::FTransformComponent>(Handle, Transform);
+			World.SetComponent<Maho::FTransformComponent>(Handle, Transform);
 
 			// ─── Persistent camera entity ───
 			{
 				Maho::ComponentMaskType CamMask = Maho::MakeComponentMask<Maho::FTransformComponent, Maho::FCameraComponent>();
-				Maho::FEntityHandle CamHandle = ECSWorld.CreatePersistentEntity(CamMask);
+				Maho::FEntityHandle CamHandle = World.CreatePersistentEntity(CamMask);
 
 				Maho::FTransformComponent CamTransform;
 				CamTransform.SetIdentity();
 				CamTransform.LocalToWorld[14] = -5.0f;
-				ECSWorld.GetEntityManager().SetComponent<Maho::FTransformComponent>(CamHandle, CamTransform);
+				World.GetEntityManager().SetComponent<Maho::FTransformComponent>(CamHandle, CamTransform);
 
 				Maho::FCameraComponent CamComp;
 				CamComp.bMainCamera = true;
@@ -54,10 +54,11 @@ bool FWorldLayer::ExecuteStage(Maho::EEngineStage Stage)
 				CamComp.NearPlane = 0.1f;
 				CamComp.FarPlane = 1000.0f;
 				CamComp.AspectRatio = 16.0f / 9.0f;
-				ECSWorld.GetEntityManager().SetComponent<Maho::FCameraComponent>(CamHandle, CamComp);
+				World.GetEntityManager().SetComponent<Maho::FCameraComponent>(CamHandle, CamComp);
 			}
 
 			bWorldReady = true;
+			World.TickCreate();
 			MAHO_INFO("FWorldLayer: ECS world ready (\"{}\")", WorldName);
 		}
 		break;
@@ -65,26 +66,57 @@ bool FWorldLayer::ExecuteStage(Maho::EEngineStage Stage)
 	case Maho::EEngineStage::Detach:
 		if (bWorldReady)
 		{
+			World.TickDestroy();
 			bWorldReady = false;
+		}
+		break;
+
+	case Maho::EEngineStage::BeginFrame:
+		if (bWorldReady && Maho::GApp)
+		{
+			World.TickBeginFrame();
+		}
+		break;
+
+	case Maho::EEngineStage::FixedUpdate:
+		if (bWorldReady && Maho::GApp)
+		{
+			World.TickFixedUpdate(Maho::GApp->GetFixedDeltaSeconds());
 		}
 		break;
 
 	case Maho::EEngineStage::Update:
 		if (bWorldReady && Maho::GApp)
 		{
-			ECSWorld.Tick(Maho::GApp->GetDeltaSeconds());
+			World.TickUpdate(Maho::GApp->GetDeltaSeconds());
+		}
+		break;
+
+	case Maho::EEngineStage::LateUpdate:
+		if (bWorldReady && Maho::GApp)
+		{
+			World.TickLateUpdate(Maho::GApp->GetDeltaSeconds());
+		}
+		break;
+
+	case Maho::EEngineStage::EndFrame:
+		if (bWorldReady && Maho::GApp)
+		{
+			World.TickEndFrame();
 		}
 		break;
 
 	case Maho::EEngineStage::PreRender:
 		if (bWorldReady && Maho::GApp)
 		{
+			World.TickPreRender();
+
 			auto* RenderSystem = Maho::GApp->GetExtension<Maho::FRenderSystem>();
 			if (RenderSystem)
 			{
 				Maho::FSceneUpdatePacket Packet;
 				{
-					auto Query = ECSWorld.Query<Maho::FTransformComponent>();
+					auto Query = World.Query<Maho::FTransformComponent>();
 					Query.ForEach([&Packet](Maho::FEntityHandle Handle, const Maho::FTransformComponent& Transform)
 					{
 						Maho::FSceneDrawItem Item;
@@ -94,8 +126,8 @@ bool FWorldLayer::ExecuteStage(Maho::EEngineStage Stage)
 					});
 				}
 				// Send camera data
-				const Maho::FCameraComponent* Cam = ECSWorld.GetPersistentComponent<Maho::FCameraComponent>();
-				const Maho::FTransformComponent* CamTrans = ECSWorld.GetPersistentComponent<Maho::FTransformComponent>();
+				const Maho::FCameraComponent* Cam = World.GetPersistentComponent<Maho::FCameraComponent>();
+				const Maho::FTransformComponent* CamTrans = World.GetPersistentComponent<Maho::FTransformComponent>();
 				if (Cam && CamTrans)
 				{
 					Maho::FCameraFrameData CamData;
@@ -128,6 +160,22 @@ bool FWorldLayer::ExecuteStage(Maho::EEngineStage Stage)
 				}
 				RenderSystem->GetRenderServer().SubmitSceneUpdate(std::move(Packet));
 			}
+		}
+		break;
+
+	case Maho::EEngineStage::PostRender:
+		if (bWorldReady && Maho::GApp)
+		{
+			World.TickPostRender();
+		}
+		break;
+
+	case Maho::EEngineStage::PrepareExit:
+	case Maho::EEngineStage::Shutdown:
+		if (bWorldReady)
+		{
+			World.TickDestroy();
+			bWorldReady = false;
 		}
 		break;
 

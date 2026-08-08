@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ECS/ECSApi.h"
 #include "ECS/System.h"
 
 #include <memory>
@@ -24,7 +25,7 @@ class FEntityCommandBuffer;
  * Each group automatically creates Begin/End ECB systems.
  * Execution is depth-first: parent OnUpdate recursively calls children.
  */
-class FSystemGroup : public ISystem
+class MAHO_ECS_API FSystemGroup : public ISystem
 {
 public:
 	explicit FSystemGroup(const char* InName);
@@ -32,9 +33,19 @@ public:
 
 	const char* GetName() const override { return Name.c_str(); }
 
-	virtual void OnUpdate(float DeltaTime, FWorld& World) override;
+	// ── Multi-stage lifecycle ──────────────────────────────────────
 
-	/** Add a system to this group (takes ownership via unique_ptr). */
+	void OnCreate(FWorld& World) override;
+	void OnDestroy(FWorld& World) override;
+	void OnBeginFrame(FWorld& World) override;
+	void OnFixedUpdate(float DeltaTime, FWorld& World) override;
+	void OnUpdate(float DeltaTime, FWorld& World) override;
+	void OnLateUpdate(float DeltaTime, FWorld& World) override;
+	void OnEndFrame(FWorld& World) override;
+	void OnPreRender(FWorld& World) override;
+	void OnPostRender(FWorld& World) override;
+
+	// ── System registration ────────────────────────────────────────
 	template <typename T, typename... Args>
 	T* AddSystem(Args&&... InArgs)
 	{
@@ -84,6 +95,33 @@ public:
 protected:
 	void UpdateBeforeByName(const char* A, const char* B);
 
+private:
+	template <typename TMethod>
+	void DispatchNoDT(FWorld& World, TMethod Method)
+	{
+		for (FSystemGroup* Sub : Groups)
+		{
+			if (Sub) { (Sub->*Method)(World); }
+		}
+		for (ISystem* Sys : Systems)
+		{
+			if (Sys) { (Sys->*Method)(World); }
+		}
+	}
+
+	template <typename TMethod>
+	void DispatchWithDT(FWorld& World, float DeltaTime, TMethod Method)
+	{
+		for (FSystemGroup* Sub : Groups)
+		{
+			if (Sub) { (Sub->*Method)(DeltaTime, World); }
+		}
+		for (ISystem* Sys : Systems)
+		{
+			if (Sys) { (Sys->*Method)(DeltaTime, World); }
+		}
+	}
+
 	std::string Name;
 
 	std::vector<ISystem*> Systems;
@@ -101,21 +139,21 @@ protected:
 /**
  * Built-in system groups matching Unity DOTS conventions.
  */
-class FInitializationSystemGroup : public FSystemGroup
+class MAHO_ECS_API FInitializationSystemGroup : public FSystemGroup
 {
 public:
 	FInitializationSystemGroup() : FSystemGroup("InitializationSystemGroup") {}
 	static const char* StaticName() { return "InitializationSystemGroup"; }
 };
 
-class FSimulationSystemGroup : public FSystemGroup
+class MAHO_ECS_API FSimulationSystemGroup : public FSystemGroup
 {
 public:
 	FSimulationSystemGroup() : FSystemGroup("SimulationSystemGroup") {}
 	static const char* StaticName() { return "SimulationSystemGroup"; }
 };
 
-class FPresentationSystemGroup : public FSystemGroup
+class MAHO_ECS_API FPresentationSystemGroup : public FSystemGroup
 {
 public:
 	FPresentationSystemGroup() : FSystemGroup("PresentationSystemGroup") {}

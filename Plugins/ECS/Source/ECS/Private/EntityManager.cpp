@@ -1,4 +1,4 @@
-#include "Game/ECS/EntityManager.h"
+#include "ECS/EntityManager.h"
 
 #include <algorithm>
 #include <cassert>
@@ -25,7 +25,7 @@ FEntityManager::~FEntityManager()
 	PendingAdds.clear();
 }
 
-// ─── Entity lifecycle ──────────────────────────────────────────
+// --- Entity lifecycle ---
 
 FEntityHandle FEntityManager::CreateEntity()
 {
@@ -169,7 +169,7 @@ bool FEntityManager::IsValid(FEntityHandle Handle) const
 	return Slot.bAlive && Slot.Generation == Handle.Generation;
 }
 
-// ─── Deferred operations ────────────────────────────────────────
+// --- Deferred operations ---
 
 void FEntityManager::EndFrame()
 {
@@ -255,7 +255,7 @@ void FEntityManager::EndFrame()
 	PendingRemoves.clear();
 }
 
-// ─── Query support ─────────────────────────────────────────────
+// --- Query support ---
 
 void FEntityManager::GatherMatchingChunks(const ComponentMaskType& Required,
                                            const ComponentMaskType& Excluded,
@@ -292,7 +292,7 @@ void FEntityManager::GatherMatchingChunks(const ComponentMaskType& Required,
 	}
 }
 
-// ─── Type-erased operations ─────────────────────────────────────
+// --- Type-erased operations ---
 
 void FEntityManager::SetComponentTypeErased(FEntityHandle Handle, FComponentTypeId TypeId,
                                               const void* Data, std::size_t DataSize)
@@ -395,7 +395,7 @@ void FEntityManager::RemoveTagTypeErased(FEntityHandle Handle, FComponentTypeId 
 	MigrateEntityInternal(Handle, ToArchetype, {});
 }
 
-// ─── Internal helpers ──────────────────────────────────────────
+// --- Internal helpers ---
 
 FEntityManager::FEntityLocation FEntityManager::LocateEntity(FEntityHandle Handle) const
 {

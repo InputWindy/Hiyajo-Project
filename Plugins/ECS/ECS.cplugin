@@ -1,0 +1,13 @@
+{
+	"FileVersion": 1,
+	"FriendlyName": "ECS",
+	"Description": "Archetype-based Entity Component System (Unity DOTS-aligned).",
+	"Category": "Runtime",
+	"EnabledByDefault": true,
+	"Modules": [
+		{
+			"Name": "ECS",
+			"Type": "Runtime"
+		}
+	]
+}

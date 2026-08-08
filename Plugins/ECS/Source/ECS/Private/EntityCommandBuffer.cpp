@@ -1,5 +1,5 @@
-#include "Game/ECS/EntityCommandBuffer.h"
-#include "Game/ECS/EntityManager.h"
+#include "ECS/EntityCommandBuffer.h"
+#include "ECS/EntityManager.h"
 
 namespace Maho
 {

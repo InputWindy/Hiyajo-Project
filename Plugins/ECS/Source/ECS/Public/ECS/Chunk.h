@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ECS/ECSApi.h"
 #include "ECS/ComponentType.h"
 #include "ECS/EntityHandle.h"
 
@@ -33,7 +34,7 @@ struct FEntityRow
  *
  * Tag components (sizeof(T) == 0) occupy a mask bit but allocate no column.
  */
-struct FChunk
+struct MAHO_ECS_API FChunk
 {
 	static constexpr std::size_t Capacity = ECSChunkSize;
 

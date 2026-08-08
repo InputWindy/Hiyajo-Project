@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ECS/ECSApi.h"
 #include "ECS/Chunk.h"
 
 #include <cstddef>
@@ -14,7 +15,7 @@ namespace Maho
  *
  * Tag components are tracked in Mask but consume zero Chunk space.
  */
-struct FArchetype
+struct MAHO_ECS_API FArchetype
 {
 	FArchetype(const ComponentMaskType& InMask, const std::vector<std::size_t>& InComponentSizes);
 

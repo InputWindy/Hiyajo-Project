@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ECS/ECSApi.h"
 #include "ECS/ComponentType.h"
 #include "ECS/EntityHandle.h"
 #include "ECS/System.h"
@@ -26,7 +27,7 @@ class FEntityManager;
  *   FBeginSimECBSystem  — plays back the "begin" ECB before the simulation group
  *   FEndSimECBSystem    — plays back the "end" ECB after the simulation group
  */
-class FEntityCommandBuffer
+class MAHO_ECS_API FEntityCommandBuffer
 {
 public:
 	FEntityCommandBuffer() = default;
@@ -159,14 +160,26 @@ private:
 
 /**
  * Standard ECB system that plays back an ECB before/after a system group.
+ *
+ * Only OnUpdate performs actual work (ECB playback);
+ * all other lifecycle hooks are no-ops.
  */
-class FECBSystem : public ISystem
+class MAHO_ECS_API FECBSystem : public ISystem
 {
 public:
 	explicit FECBSystem(FEntityCommandBuffer& InECB, const char* InName);
 
 	const char* GetName() const override { return Name.c_str(); }
+
+	void OnCreate(FWorld& World) override {}
+	void OnDestroy(FWorld& World) override {}
+	void OnBeginFrame(FWorld& World) override {}
+	void OnFixedUpdate(float DeltaTime, FWorld& World) override {}
 	void OnUpdate(float DeltaTime, FWorld& World) override;
+	void OnLateUpdate(float DeltaTime, FWorld& World) override {}
+	void OnEndFrame(FWorld& World) override {}
+	void OnPreRender(FWorld& World) override {}
+	void OnPostRender(FWorld& World) override {}
 
 private:
 	FEntityCommandBuffer& ECB;

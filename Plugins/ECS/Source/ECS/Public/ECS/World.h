@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ECS/ECSApi.h"
 #include "ECS/EntityManager.h"
 #include "ECS/Query.h"
 #include "ECS/SystemGroup.h"
@@ -26,7 +27,7 @@ namespace Maho
  *   // Each frame:
  *   World.Tick(DeltaTime);
  */
-class FWorld
+class MAHO_ECS_API FWorld
 {
 public:
 	FWorld();
@@ -59,8 +60,32 @@ public:
 
 	// ─── Tick ─────────────────────────────────────────────────────
 
-	/** Tick all system groups in order. */
-	void Tick(float DeltaTime);
+	/** Called once after systems are registered (Attach). */
+	void TickCreate();
+
+	/** Called once before systems are destroyed (Detach / Shutdown). */
+	void TickDestroy();
+
+	/** Called at the start of every frame. */
+	void TickBeginFrame();
+
+	/** Fixed-timestep update (0..N times per frame). */
+	void TickFixedUpdate(float DeltaTime);
+
+	/** Main per-frame update. */
+	void TickUpdate(float DeltaTime);
+
+	/** Called after Update. */
+	void TickLateUpdate(float DeltaTime);
+
+	/** Called at the end of the frame. */
+	void TickEndFrame();
+
+	/** Called before render submission. */
+	void TickPreRender();
+
+	/** Called after rendering completes. */
+	void TickPostRender();
 
 	// ─── EntityManager access ─────────────────────────────────────
 

@@ -1695,7 +1695,7 @@ void FEditorLayer::DrawMainViewportPanel()
 			{
 				if (FWorldLayer* WL = GApp->GetExtension<FWorldLayer>())
 				{
-					FWorld& World = WL->GetECSWorld();
+					FWorld& World = WL->GetWorld();
 					FEntityManager& Mgr = World.GetEntityManager();
 
 					ComponentMaskType Mask = MakeComponentMask<FTransformComponent, FStaticMeshComponent>();
@@ -1749,7 +1749,7 @@ void FEditorLayer::DrawSceneOutliner()
 		return;
 	}
 
-	FWorld& ECSWorld = WorldLayer->GetECSWorld();
+	FWorld& ECSWorld = WorldLayer->GetWorld();
 	FEntityManager& Mgr = ECSWorld.GetEntityManager();
 
 	// ── Delete key handling ──
@@ -1854,7 +1854,7 @@ void FEditorLayer::DrawInspectorPanel()
 		return;
 	}
 
-	FWorld& ECSWorld = WorldLayer->GetECSWorld();
+	FWorld& ECSWorld = WorldLayer->GetWorld();
 	FEntityManager& Mgr = ECSWorld.GetEntityManager();
 
 	if (!SelectedEntity.IsValid() || !Mgr.IsValid(SelectedEntity))

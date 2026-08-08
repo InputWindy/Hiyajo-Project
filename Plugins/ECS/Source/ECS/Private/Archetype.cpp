@@ -1,4 +1,4 @@
-#include "Game/ECS/Archetype.h"
+#include "ECS/Archetype.h"
 
 #include <algorithm>
 
@@ -101,7 +101,7 @@ const void* FChunk::GetComponentColumn(std::size_t TypeIndex) const
 	return Data + Offset;
 }
 
-// ─── FArchetype ────────────────────────────────────────────────
+// --- FArchetype ---
 
 FArchetype::FArchetype(const ComponentMaskType& InMask, const std::vector<std::size_t>& InComponentSizes)
 	: Mask(InMask)

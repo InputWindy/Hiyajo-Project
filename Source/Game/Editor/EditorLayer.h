@@ -4,9 +4,9 @@
 #include "Game/Editor/EditorUIRegistry.h"
 #include "Game/System/Resource/ResourceSystem.h"
 #include "Game/Object/Object.h"
-#include "Game/ECS/SystemGroup.h"
-#include "Game/ECS/EntityManager.h"
-#include "Game/ECS/EntityHandle.h"
+#include <ECS/SystemGroup.h>
+#include <ECS/EntityManager.h>
+#include <ECS/EntityHandle.h>
 #include "Game/World/WorldLayer.h"
 #include "Game/Components/AllComponents.h"
 #include "Game/World/Components/TransformComponent.h"

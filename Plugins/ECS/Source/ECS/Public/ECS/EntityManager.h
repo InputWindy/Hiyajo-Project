@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ECS/ECSApi.h"
 #include "ECS/Archetype.h"
 #include "ECS/ComponentType.h"
 #include "ECS/EntityHandle.h"
@@ -18,7 +19,7 @@ namespace Maho
  * Entities live in Archetypes based on their component mask.
  * Adding/removing components defers to EndFrame for batch migration.
  */
-class FEntityManager
+class MAHO_ECS_API FEntityManager
 {
 public:
 	FEntityManager() = default;

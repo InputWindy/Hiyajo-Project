@@ -1,7 +1,7 @@
 #include "Game/World/Systems/MovementSystem.h"
 
-#include "ECS/World.h"
-#include "ECS/Query.h"
+#include <ECS/World.h>
+#include <ECS/Query.h>
 #include "Game/World/Components/TransformComponent.h"
 
 namespace

@@ -1,6 +1,6 @@
-#include "Game/ECS/SystemGroup.h"
-#include "Game/ECS/EntityCommandBuffer.h"
-#include "Game/ECS/World.h"
+#include "ECS/SystemGroup.h"
+#include "ECS/EntityCommandBuffer.h"
+#include "ECS/World.h"
 
 #include <algorithm>
 #include <unordered_map>
@@ -9,7 +9,7 @@
 namespace Maho
 {
 
-// ─── FECBSystem ─────────────────────────────────────────────────
+// --- FECBSystem ---
 
 FECBSystem::FECBSystem(FEntityCommandBuffer& InECB, const char* InName)
 	: ECB(InECB)
@@ -22,7 +22,7 @@ void FECBSystem::OnUpdate(float DeltaTime, FWorld& World)
 	ECB.Playback(World.GetEntityManager());
 }
 
-// ─── FSystemGroup ────────────────────────────────────────────────
+// --- FSystemGroup ---
 
 FSystemGroup::FSystemGroup(const char* InName)
 	: Name(InName)
@@ -39,36 +39,61 @@ FSystemGroup::FSystemGroup(const char* InName)
 
 FSystemGroup::~FSystemGroup() = default;
 
+// --- FSystemGroup lifecycle ---
+
+void FSystemGroup::OnCreate(FWorld& World)
+{
+	DispatchNoDT(World, &ISystem::OnCreate);
+}
+
+void FSystemGroup::OnDestroy(FWorld& World)
+{
+	DispatchNoDT(World, &ISystem::OnDestroy);
+}
+
+void FSystemGroup::OnBeginFrame(FWorld& World)
+{
+	DispatchNoDT(World, &ISystem::OnBeginFrame);
+}
+
+void FSystemGroup::OnFixedUpdate(float DeltaTime, FWorld& World)
+{
+	DispatchWithDT(World, DeltaTime, &ISystem::OnFixedUpdate);
+}
+
 void FSystemGroup::OnUpdate(float DeltaTime, FWorld& World)
 {
-	// 1. Playback Begin ECB
 	if (BeginECBSystem)
 	{
 		BeginECBSystem->OnUpdate(DeltaTime, World);
 	}
 
-	// 2. Execute systems in registration order (depth-first for sub-groups)
-	for (std::size_t I = 0; I < Groups.size(); ++I)
-	{
-		if (Groups[I] != nullptr)
-		{
-			Groups[I]->OnUpdate(DeltaTime, World);
-		}
-	}
+	DispatchWithDT(World, DeltaTime, &ISystem::OnUpdate);
 
-	for (std::size_t I = 0; I < Systems.size(); ++I)
-	{
-		if (Systems[I] != nullptr)
-		{
-			Systems[I]->OnUpdate(DeltaTime, World);
-		}
-	}
-
-	// 3. Playback End ECB
 	if (EndECBSystem)
 	{
 		EndECBSystem->OnUpdate(DeltaTime, World);
 	}
+}
+
+void FSystemGroup::OnLateUpdate(float DeltaTime, FWorld& World)
+{
+	DispatchWithDT(World, DeltaTime, &ISystem::OnLateUpdate);
+}
+
+void FSystemGroup::OnEndFrame(FWorld& World)
+{
+	DispatchNoDT(World, &ISystem::OnEndFrame);
+}
+
+void FSystemGroup::OnPreRender(FWorld& World)
+{
+	DispatchNoDT(World, &ISystem::OnPreRender);
+}
+
+void FSystemGroup::OnPostRender(FWorld& World)
+{
+	DispatchNoDT(World, &ISystem::OnPostRender);
 }
 
 void FSystemGroup::UpdateBeforeByName(const char* A, const char* B)
