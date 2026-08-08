@@ -1,14 +1,19 @@
 #pragma once
 
+#include "ECS/ComponentType.h"
+
 #include <string>
 
 namespace Maho
 {
 
-class FECSWorld;
+class FWorld;
 
 /**
- * ECS System base. Override OnUpdate to define per-frame logic.
+ * ECS System base. Override OnUpdate for per-frame logic.
+ *
+ * Systems live inside FSystemGroup, which is itself an ISystem.
+ * This enables nested group trees with depth-first execution.
  */
 class ISystem
 {
@@ -17,12 +22,12 @@ public:
 
 	[[nodiscard]] virtual const char* GetName() const = 0;
 
-	virtual void OnUpdate(float DeltaTime, FECSWorld& World) = 0;
+	virtual void OnUpdate(float DeltaTime, FWorld& World) = 0;
 };
 
 /**
- * Declarative helpers for system reads/writes (used by SystemScheduler for
- * dependency sorting — matching based on component type masks).
+ * Declarative helpers for system reads/writes.
+ * Used by SystemGroup to derive component masks for automatic ordering.
  */
 template <typename... Ts>
 struct TReadsComponent

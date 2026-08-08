@@ -1,92 +1,73 @@
-#include "ECS/World.h"
-
-#include <cstring>
+#include "Game/ECS/World.h"
+#include "Game/ECS/EntityCommandBuffer.h"
 
 namespace Maho
 {
 
-void FECSWorld::AddSystem(ISystem* InSystem)
+FWorld::FWorld()
 {
-	if (InSystem != nullptr)
-	{
-		Systems.push_back(InSystem);
-	}
 }
 
-void FECSWorld::Tick(float DeltaTime)
+void FWorld::Tick(float DeltaTime)
 {
-	for (ISystem* Sys : Systems)
+	// Execute all system groups in registration order.
+	// Each group recursively executes its children depth-first.
+	for (FSystemGroup* Group : SystemGroups)
 	{
-		if (Sys != nullptr)
+		if (Group != nullptr)
 		{
-			Sys->OnUpdate(DeltaTime, *this);
+			Group->OnUpdate(DeltaTime, *this);
 		}
 	}
+
+	// Process any deferred component operations.
 	Manager.EndFrame();
 }
 
-void FECSWorld::EndFrame()
+FEntityCommandBuffer& FWorld::GetEndSimECB()
 {
-	Manager.EndFrame();
+	FSimulationSystemGroup& SimGroup = GetOrCreateSystemGroup<FSimulationSystemGroup>();
+	return SimGroup.GetEndECB();
 }
 
-FEntityHandle FECSWorld::CreatePersistentEntity(ComponentMaskType Mask)
+FEntityHandle FWorld::CreatePersistentEntity(const ComponentMaskType& Mask)
 {
 	FEntityHandle Handle = Manager.CreateEntity(Mask);
-	PersistentEntities.push_back(Handle);
+	if (Handle.IsValid())
+	{
+		PersistentEntities.push_back(Handle);
+	}
 	return Handle;
 }
 
-void FECSWorld::DestroyPersistentEntity(FEntityHandle Handle)
+void FWorld::DestroyPersistentEntity(FEntityHandle Handle)
 {
-	auto It = std::find(PersistentEntities.begin(), PersistentEntities.end(), Handle);
-	if (It != PersistentEntities.end())
+	if (!Manager.IsValid(Handle))
 	{
-		PersistentEntities.erase(It);
-		Manager.DestroyEntity(Handle);
+		return;
 	}
-}
 
-bool FECSWorld::LoadLevelFromBlob(const std::vector<std::uint8_t>& Blob)
-{
-	if (Blob.empty()) return false;
-
-	std::size_t Pos = 0;
-	auto Read = [&](void* Dst, std::size_t Size) -> bool
+	for (auto It = PersistentEntities.begin(); It != PersistentEntities.end(); ++It)
 	{
-		if (Pos + Size > Blob.size()) return false;
-		std::memcpy(Dst, Blob.data() + Pos, Size);
-		Pos += Size;
-		return true;
-	};
-
-	std::uint32_t EntityCount = 0;
-	if (!Read(&EntityCount, sizeof(EntityCount))) return false;
-
-	for (std::uint32_t I = 0; I < EntityCount; ++I)
-	{
-		ComponentMaskType Mask;
+		if (It->Index == Handle.Index && It->Generation == Handle.Generation)
 		{
-			std::uint64_t Raw[1] = {0};
-			if (!Read(Raw, sizeof(Raw))) return false;
-			Mask = ComponentMaskType(*Raw);
+			Manager.DestroyEntity(Handle);
+			PersistentEntities.erase(It);
+			return;
 		}
-		FEntityHandle Handle = Manager.CreateEntity(Mask);
-		if (!Handle.IsValid()) return false;
 	}
-
-	return true;
 }
 
-std::vector<std::uint8_t> FECSWorld::SaveLevelToBlob() const
+bool FWorld::IsPersistentEntity(FEntityHandle Handle) const
 {
-	std::vector<std::uint8_t> Blob;
-	return Blob;
-}
-
-void FECSWorld::UnloadAllLevels()
-{
-	// Destroy all entities except persistent ones — stub for now
+	for (FEntityHandle H : PersistentEntities)
+	{
+		if (H.Index == Handle.Index && H.Generation == Handle.Generation)
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 } // namespace Maho

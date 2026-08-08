@@ -16,6 +16,7 @@
 
 #include <cctype>
 #include <filesystem>
+#include <fstream>
 #include <unordered_map>
 #include <utility>
 #include <vector>

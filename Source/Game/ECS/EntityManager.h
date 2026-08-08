@@ -14,8 +14,9 @@ namespace Maho
 {
 
 /**
- * Core entity storage. Entities live in archetypes based on their component
- * mask. Adding/removing components defers to EndFrame to batch-migrate.
+ * Core entity storage with tag-aware component management.
+ * Entities live in Archetypes based on their component mask.
+ * Adding/removing components defers to EndFrame for batch migration.
  */
 class FEntityManager
 {
@@ -28,43 +29,25 @@ public:
 	FEntityManager(FEntityManager&&) = delete;
 	FEntityManager& operator=(FEntityManager&&) = delete;
 
-	/** Create entity with given component mask (no initial component data). */
+	// ─── Entity lifecycle ───
+
+	/** Create entity with no initial components. Add later via SetComponent/AddTag. */
+	[[nodiscard]] FEntityHandle CreateEntity();
+
+	/** Create entity with given component mask (no initial data). */
 	[[nodiscard]] FEntityHandle CreateEntity(const ComponentMaskType& Mask);
 
-	/** Destroy entity immediately (row is tombstoned, chunk may be compacted). */
+	/** Destroy entity immediately. */
 	void DestroyEntity(FEntityHandle Handle);
 
-	/**
-	 * Add a component to an existing entity. Value is copy-constructed.
-	 * Deferred: entity is marked for migration and moved at EndFrame.
-	 */
-	template <typename T>
-	void AddComponent(FEntityHandle Handle, const T& Value)
-	{
-		static_assert(std::is_trivially_copyable_v<T>, "ECS component must be trivially copyable");
-		PendingAdds.push_back({Handle, MakeComponentMask<T>(), 0, nullptr});
-		// Store value for deferred copy.
-		std::size_t Slot = PendingAdds.size() - 1;
-		void* Data = ::operator new(sizeof(T));
-		std::memcpy(Data, &Value, sizeof(T));
-		PendingAdds.back().ComponentData = Data;
-		PendingAdds.back().ComponentSize = sizeof(T);
-	}
+	[[nodiscard]] bool IsValid(FEntityHandle Handle) const;
 
-	/**
-	 * Remove a component from an entity.
-	 * Deferred: entity is marked for migration and moved at EndFrame.
-	 */
-	template <typename T>
-	void RemoveComponent(FEntityHandle Handle)
-	{
-		PendingRemoves.push_back({Handle, MakeComponentMask<T>()});
-	}
+	// ─── Data component access (immediate) ───
 
-	/** Get mutable component reference. Asserts if entity lacks the component. */
 	template <typename T>
 	[[nodiscard]] T* GetComponent(FEntityHandle Handle)
 	{
+		static_assert(!IsTagComponent<T>, "GetComponent: use HasTag/AddTag/RemoveTag for tag components");
 		FEntityLocation Loc = LocateEntity(Handle);
 		if (Loc.Chunk == nullptr)
 		{
@@ -76,6 +59,7 @@ public:
 	template <typename T>
 	[[nodiscard]] const T* GetComponent(FEntityHandle Handle) const
 	{
+		static_assert(!IsTagComponent<T>, "GetComponent: use HasTag/AddTag/RemoveTag for tag components");
 		FEntityLocation Loc = LocateEntity(Handle);
 		if (Loc.Chunk == nullptr)
 		{
@@ -84,23 +68,158 @@ public:
 		return Loc.Chunk->GetComponent<T>(Loc.Row);
 	}
 
-	[[nodiscard]] bool IsValid(FEntityHandle Handle) const;
+	// ─── Data component add/remove (immediate set, deferred add/remove) ───
+
+	/** Set component value. If entity lacks T, it is added immediately via migration. */
+	template <typename T>
+	void SetComponent(FEntityHandle Handle, const T& Value)
+	{
+		static_assert(std::is_trivially_copyable_v<T>, "ECS component must be trivially copyable");
+		static_assert(!IsTagComponent<T>, "SetComponent: use AddTag/RemoveTag for tag components");
+
+		ComponentMaskType NewMask = GetComponentMask(Handle);
+		NewMask.set(GetComponentTypeId<T>());
+		FArchetype* ToArchetype = FindOrCreateArchetype(NewMask);
+		if (ToArchetype == nullptr)
+		{
+			return;
+		}
+
+		// Serialize component value into a byte buffer for migration
+		std::vector<char> CompData(sizeof(T));
+		std::memcpy(CompData.data(), &Value, sizeof(T));
+
+		MigrateEntityInternal(Handle, ToArchetype, CompData);
+	}
+
+	/** Add a component with initial value. Deferred: entity migrates on EndFrame. */
+	template <typename T>
+	void AddComponent(FEntityHandle Handle, const T& Value)
+	{
+		static_assert(std::is_trivially_copyable_v<T>, "ECS component must be trivially copyable");
+		static_assert(!IsTagComponent<T>, "AddComponent: use AddTag for tag components");
+		PendingAdds.push_back({Handle, MakeComponentMask<T>(), sizeof(T), nullptr});
+		std::size_t Slot = PendingAdds.size() - 1;
+		void* Data = ::operator new(sizeof(T));
+		std::memcpy(Data, &Value, sizeof(T));
+		PendingAdds[Slot].ComponentData = Data;
+	}
+
+	/** Remove a component. Deferred: entity migrates on EndFrame. */
+	template <typename T>
+	void RemoveComponent(FEntityHandle Handle)
+	{
+		static_assert(!IsTagComponent<T>, "RemoveComponent: use RemoveTag for tag components");
+		PendingRemoves.push_back({Handle, MakeComponentMask<T>(), 0, nullptr});
+	}
+
+	// ─── Tag component operations (immediate) ───
+
+	template <typename T>
+	[[nodiscard]] bool HasTag(FEntityHandle Handle) const
+	{
+		static_assert(IsTagComponent<T>, "HasTag: T must be a tag component (sizeof(T) == 0)");
+		ComponentMaskType Mask = GetComponentMask(Handle);
+		return Mask.test(GetComponentTypeId<T>());
+	}
+
+	template <typename T>
+	void AddTag(FEntityHandle Handle)
+	{
+		static_assert(IsTagComponent<T>, "AddTag: T must be a tag component (sizeof(T) == 0)");
+		ComponentMaskType CurrentMask = GetComponentMask(Handle);
+		if (CurrentMask.test(GetComponentTypeId<T>()))
+		{
+			return; // already has tag
+		}
+		ComponentMaskType NewMask = CurrentMask;
+		NewMask.set(GetComponentTypeId<T>());
+		FArchetype* ToArchetype = FindOrCreateArchetype(NewMask);
+		if (ToArchetype == nullptr)
+		{
+			return;
+		}
+		MigrateEntityInternal(Handle, ToArchetype, {});
+	}
+
+	template <typename T>
+	void RemoveTag(FEntityHandle Handle)
+	{
+		static_assert(IsTagComponent<T>, "RemoveTag: T must be a tag component (sizeof(T) == 0)");
+		ComponentMaskType CurrentMask = GetComponentMask(Handle);
+		if (!CurrentMask.test(GetComponentTypeId<T>()))
+		{
+			return; // doesn't have tag
+		}
+		ComponentMaskType NewMask = CurrentMask;
+		NewMask.reset(GetComponentTypeId<T>());
+		FArchetype* ToArchetype = FindOrCreateArchetype(NewMask);
+		if (ToArchetype == nullptr)
+		{
+			return;
+		}
+		MigrateEntityInternal(Handle, ToArchetype, {});
+	}
+
+	// ─── Type-erased operations (for ECB playback) ───
 
 	/**
-	 * Process all pending add/remove component operations.
-	 * Migrates entities between archetypes as needed.
+	 * Set a component value. If entity lacks the type, migrates to new archetype immediately.
+	 * Type-erased version: caller passes raw byte data.
 	 */
+	void SetComponentTypeErased(FEntityHandle Handle, FComponentTypeId TypeId, const void* Data, std::size_t DataSize);
+
+	/**
+	 * Deferred add for type-erased calls. Migrates on EndFrame.
+	 */
+	void AddComponentTypeErased(FEntityHandle Handle, FComponentTypeId TypeId, const void* Data, std::size_t DataSize);
+
+	/**
+	 * Deferred remove for type-erased calls. Migrates on EndFrame.
+	 */
+	void RemoveComponentTypeErased(FEntityHandle Handle, FComponentTypeId TypeId);
+
+	/**
+	 * Add a tag via type-erased call. Immediate migration.
+	 */
+	void AddTagTypeErased(FEntityHandle Handle, FComponentTypeId TypeId);
+
+	/**
+	 * Remove a tag via type-erased call. Immediate migration.
+	 */
+	void RemoveTagTypeErased(FEntityHandle Handle, FComponentTypeId TypeId);
+
+	// ─── Deferred operations ───
+
+	/** Process all pending add/remove component operations. */
 	void EndFrame();
 
-	/** Collect all chunks matching a component mask.
-	 * Used by TComponentQuery<Ts...>::Gather().
+	// ─── Query support ───
+
+	/**
+	 * Collect all chunks whose mask contains Required AND does not contain any of Excluded.
+	 * Used by TComponentQuery.
 	 */
-	void GatherMatchingChunks(const ComponentMaskType& Mask, std::vector<FChunk*>& OutChunks) const;
+	void GatherMatchingChunks(const ComponentMaskType& Required, const ComponentMaskType& Excluded,
+	                          std::vector<FChunk*>& OutChunks) const;
+
+	// ─── Statistics ───
 
 	[[nodiscard]] std::size_t GetEntityCount() const { return EntityCount; }
 	[[nodiscard]] std::size_t GetArchetypeCount() const { return Archetypes.size(); }
 
-	/** Iterate all alive entities. Callback receives FEntityHandle. */
+	/** Get the component mask for a given entity. */
+	[[nodiscard]] ComponentMaskType GetComponentMask(FEntityHandle Handle) const
+	{
+		FEntityLocation Loc = LocateEntity(Handle);
+		if (Loc.Chunk == nullptr || Loc.ArchetypeIndex >= Archetypes.size())
+		{
+			return {};
+		}
+		return Archetypes[Loc.ArchetypeIndex].Archetype->Mask;
+	}
+
+	/** Iterate all alive entities. */
 	template <typename F>
 	void ForEachEntity(F&& Func) const
 	{
@@ -112,17 +231,6 @@ public:
 				Func(FEntityHandle::Make(static_cast<std::uint32_t>(I), Slot.Generation));
 			}
 		}
-	}
-
-	/** Get the component mask for a given entity. */
-	[[nodiscard]] ComponentMaskType GetComponentMask(FEntityHandle Handle) const
-	{
-		FEntityLocation Loc = LocateEntity(Handle);
-		if (Loc.Chunk == nullptr || Loc.ArchetypeIndex >= Archetypes.size())
-		{
-			return {};
-		}
-		return Archetypes[Loc.ArchetypeIndex].Archetype->Mask;
 	}
 
 private:
@@ -141,12 +249,11 @@ private:
 		void* ComponentData = nullptr;
 	};
 
-	FEntityLocation LocateEntity(FEntityHandle Handle) const;
-	FArchetype* FindOrCreateArchetype(const ComponentMaskType& Mask, const std::vector<std::size_t>& Sizes);
-	FChunk* AllocateChunk(FArchetype& Archetype);
-	void MigrateEntity(FEntityHandle Handle, FArchetype& FromArchetype, FArchetype* ToArchetype, const std::vector<char>& NewComponentsData);
+	struct FArchetypeEntry
+	{
+		FArchetype* Archetype = nullptr;
+	};
 
-	// Entity slot management.
 	struct FEntitySlot
 	{
 		FChunk* Chunk = nullptr;
@@ -156,6 +263,9 @@ private:
 		bool bAlive = false;
 	};
 
+	FEntityLocation LocateEntity(FEntityHandle Handle) const;
+	FArchetype* FindOrCreateArchetype(const ComponentMaskType& Mask);
+	void MigrateEntityInternal(FEntityHandle Handle, FArchetype* ToArchetype, const std::vector<char>& NewComponentsData);
 	FEntitySlot& GetSlot(std::uint32_t Index);
 	const FEntitySlot& GetSlot(std::uint32_t Index) const;
 
@@ -163,25 +273,21 @@ private:
 	std::vector<std::uint32_t> FreeIndices;
 	std::size_t EntityCount = 0;
 
-	struct FArchetypeEntry
-	{
-		FArchetype* Archetype = nullptr;
-		std::vector<std::size_t> ComponentSizes;
-	};
-
 	std::vector<FArchetypeEntry> Archetypes;
 
 	std::vector<FDeferredOp> PendingAdds;
 	std::vector<FDeferredOp> PendingRemoves;
 };
 
-// Template Gather
+// Template implementations that depend on complete types.
+
 template <typename... Ts>
 void TComponentQuery<Ts...>::Gather(const FEntityManager& Manager)
 {
-	ComponentMaskType Mask = MakeComponentMask<Ts...>();
+	ComponentMaskType Required = MakeComponentMask<Ts...>();
+	ComponentMaskType EffectiveExcluded = ExcludedMask;
 	std::vector<FChunk*> Matching;
-	Manager.GatherMatchingChunks(Mask, Matching);
+	Manager.GatherMatchingChunks(Required, EffectiveExcluded, Matching);
 	Views.clear();
 	Views.reserve(Matching.size());
 	for (FChunk* C : Matching)

@@ -1,39 +1,52 @@
-#include "ECS/Archetype.h"
+#include "Game/ECS/Archetype.h"
 
 #include <algorithm>
-#include <memory>
-#include <new>
 
 namespace Maho
 {
 
-FChunk::FChunk(const ComponentMaskType& InMask, const std::vector<std::size_t>& InSizes, const std::vector<std::size_t>& InOffsets)
+FChunk::FChunk(const ComponentMaskType& InMask, const std::vector<std::size_t>& InComponentSizes)
 	: Mask(InMask)
+	, ComponentSizes(InComponentSizes)
 {
-	// Compute row stride: entity row header + all component columns.
-	std::size_t TotalStride = sizeof(FEntityRow);
-	for (std::size_t S : InSizes)
-	{
-		TotalStride += S;
-	}
-	RowStride = TotalStride;
-	ColumnSizes = InSizes;
-	ColumnOffsets = InOffsets;
+	// Calculate layout: entity rows first, then data component columns.
+	// Tag components (size 0) are skipped.
+	std::size_t EntityAreaSize = sizeof(FEntityRow) * Capacity;
+	std::size_t DataAreaSize = 0;
 
-	Data = new std::uint8_t[ECSChunkSize * RowStride]();
-	Count = 0;
+	ColumnOffsets.resize(InComponentSizes.size(), 0);
+
+	for (std::size_t I = 0; I < InComponentSizes.size(); ++I)
+	{
+		if (InComponentSizes[I] > 0)
+		{
+			ColumnOffsets[I] = EntityAreaSize + DataAreaSize;
+			DataAreaSize += InComponentSizes[I] * Capacity;
+		}
+		else
+		{
+			ColumnOffsets[I] = static_cast<std::size_t>(-1); // marker for tag
+		}
+	}
+
+	std::size_t TotalSize = EntityAreaSize + DataAreaSize;
+	MaxCount = Capacity;
+
+	Data = new std::uint8_t[TotalSize]();
+	std::memset(Data, 0, TotalSize);
 }
 
 FChunk::FChunk(FChunk&& Other) noexcept
 	: Mask(Other.Mask)
-	, ColumnSizes(std::move(Other.ColumnSizes))
+	, ComponentSizes(std::move(Other.ComponentSizes))
 	, ColumnOffsets(std::move(Other.ColumnOffsets))
-	, RowStride(Other.RowStride)
+	, MaxCount(Other.MaxCount)
 	, Count(Other.Count)
 	, Data(Other.Data)
 {
 	Other.Data = nullptr;
 	Other.Count = 0;
+	Other.MaxCount = 0;
 }
 
 FChunk& FChunk::operator=(FChunk&& Other) noexcept
@@ -42,13 +55,14 @@ FChunk& FChunk::operator=(FChunk&& Other) noexcept
 	{
 		delete[] Data;
 		Mask = Other.Mask;
-		ColumnSizes = std::move(Other.ColumnSizes);
+		ComponentSizes = std::move(Other.ComponentSizes);
 		ColumnOffsets = std::move(Other.ColumnOffsets);
-		RowStride = Other.RowStride;
+		MaxCount = Other.MaxCount;
 		Count = Other.Count;
 		Data = Other.Data;
 		Other.Data = nullptr;
 		Other.Count = 0;
+		Other.MaxCount = 0;
 	}
 	return *this;
 }
@@ -56,33 +70,59 @@ FChunk& FChunk::operator=(FChunk&& Other) noexcept
 FChunk::~FChunk()
 {
 	delete[] Data;
+	Data = nullptr;
 }
 
-void* FChunk::GetComponentColumn(std::size_t ColumnIndex)
+void* FChunk::GetComponentColumn(std::size_t TypeIndex)
 {
-	assert(ColumnIndex < ColumnSizes.size());
-	return static_cast<char*>(static_cast<void*>(GetEntityRows() + ECSChunkSize)) + ColumnOffsets[ColumnIndex] * ECSChunkSize;
-}
-
-const void* FChunk::GetComponentColumn(std::size_t ColumnIndex) const
-{
-	assert(ColumnIndex < ColumnSizes.size());
-	return static_cast<const char*>(static_cast<const void*>(GetEntityRows() + ECSChunkSize)) + ColumnOffsets[ColumnIndex] * ECSChunkSize;
-}
-
-FArchetype::FArchetype(const ComponentMaskType& InMask, const std::vector<std::size_t>& InSizes)
-	: Mask(InMask)
-{
-	// Compute column offsets for SoA layout.
-	ComponentSizes = InSizes;
-	ComponentOffsets.resize(InSizes.size(), 0);
-	std::size_t Offset = 0;
-	for (std::size_t Index = 0; Index < InSizes.size(); ++Index)
+	if (TypeIndex >= ColumnOffsets.size())
 	{
-		ComponentOffsets[Index] = Offset;
-		Offset += InSizes[Index];
+		return nullptr;
 	}
-	EntityRowSize = sizeof(FEntityRow) + Offset;
+	std::size_t Offset = ColumnOffsets[TypeIndex];
+	if (Offset == static_cast<std::size_t>(-1))
+	{
+		return nullptr; // tag column
+	}
+	return Data + Offset;
+}
+
+const void* FChunk::GetComponentColumn(std::size_t TypeIndex) const
+{
+	if (TypeIndex >= ColumnOffsets.size())
+	{
+		return nullptr;
+	}
+	std::size_t Offset = ColumnOffsets[TypeIndex];
+	if (Offset == static_cast<std::size_t>(-1))
+	{
+		return nullptr; // tag column
+	}
+	return Data + Offset;
+}
+
+// ─── FArchetype ────────────────────────────────────────────────
+
+FArchetype::FArchetype(const ComponentMaskType& InMask, const std::vector<std::size_t>& InComponentSizes)
+	: Mask(InMask)
+	, ComponentSizes(InComponentSizes)
+{
+}
+
+FArchetype::~FArchetype()
+{
+	for (FChunk* C : Chunks)
+	{
+		delete C;
+	}
+	Chunks.clear();
+}
+
+FChunk* FArchetype::AllocateChunk()
+{
+	FChunk* NewChunk = new FChunk(Mask, ComponentSizes);
+	Chunks.push_back(NewChunk);
+	return NewChunk;
 }
 
 } // namespace Maho

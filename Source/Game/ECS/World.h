@@ -2,59 +2,119 @@
 
 #include "ECS/EntityManager.h"
 #include "ECS/Query.h"
-#include "ECS/System.h"
-#include "ECS/SystemScheduler.h"
+#include "ECS/SystemGroup.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
 namespace Maho
 {
 
-class UWorld;
-
 /**
- * FECSWorld wraps the entity manager and system list.
- * Game layers call Tick(dt) once per frame.
+ * FWorld is the top-level ECS container.
+ *
+ * Owns:
+ *   - FEntityManager (entity storage)
+ *   - Root FSystemGroup tree (ticking infrastructure)
+ *   - ECB systems for Begin/End synchronization points
+ *
+ * Usage:
+ *   FWorld World;
+ *   auto& SimGroup = World.GetOrCreateSystemGroup<FSimulationSystemGroup>();
+ *   SimGroup.AddSystem<FMySystem>();
+ *   // Each frame:
+ *   World.Tick(DeltaTime);
  */
-class FECSWorld
+class FWorld
 {
 public:
-	FECSWorld() = default;
-	~FECSWorld() = default;
+	FWorld();
+	virtual ~FWorld() = default;
 
-	FECSWorld(const FECSWorld&) = delete;
-	FECSWorld& operator=(const FECSWorld&) = delete;
+	FWorld(const FWorld&) = delete;
+	FWorld& operator=(const FWorld&) = delete;
+	FWorld(FWorld&&) = delete;
+	FWorld& operator=(FWorld&&) = delete;
 
-	/** Register a system (must outlive the world or be unregistered). */
-	void AddSystem(ISystem* InSystem);
+	// ─── System groups ────────────────────────────────────────────
 
-	/** Tick all systems in order (currently sequential; scheduler for parallel). */
+	/** Get or create a system group by type. Created on first call. */
+	template <typename T>
+	T& GetOrCreateSystemGroup()
+	{
+		static_assert(std::is_base_of_v<FSystemGroup, T>, "T must derive from FSystemGroup");
+		for (auto* G : SystemGroups)
+		{
+			T* Casted = dynamic_cast<T*>(G);
+			if (Casted)
+			{
+				return *Casted;
+			}
+		}
+		auto Grp = new T();
+		SystemGroups.push_back(Grp);
+		return *Grp;
+	}
+
+	// ─── Tick ─────────────────────────────────────────────────────
+
+	/** Tick all system groups in order. */
 	void Tick(float DeltaTime);
 
-	/** Process deferred component add/remove operations. */
-	void EndFrame();
+	// ─── EntityManager access ─────────────────────────────────────
 
 	[[nodiscard]] FEntityManager& GetEntityManager() { return Manager; }
 	[[nodiscard]] const FEntityManager& GetEntityManager() const { return Manager; }
 
-	// ─── Persistent entities (camera, game manager, etc.) ───
+	// ─── Convenience: direct entity manipulation ──────────────────
 
-	/** Create a persistent entity. These are NOT part of any ULevel. */
-	FEntityHandle CreatePersistentEntity(ComponentMaskType Mask);
+	FEntityHandle CreateEntity()
+	{
+		return Manager.CreateEntity();
+	}
+
+	template <typename T>
+	void SetComponent(FEntityHandle Handle, const T& Value)
+	{
+		Manager.SetComponent<T>(Handle, Value);
+	}
+
+	template <typename T>
+	void AddTag(FEntityHandle Handle)
+	{
+		Manager.AddTag<T>(Handle);
+	}
+
+	template <typename T>
+	void RemoveTag(FEntityHandle Handle)
+	{
+		Manager.RemoveTag<T>(Handle);
+	}
+
+	// ─── Convenience: query builder ────────────────────────────────
+
+	template <typename... Ts>
+	TComponentQuery<Ts...> Query()
+	{
+		TComponentQuery<Ts...> Q;
+		Q.Gather(Manager);
+		return Q;
+	}
+
+	// ─── ECB access ────────────────────────────────────────────────
+
+	/** Convenience: get the End ECB of the simulation group. */
+	FEntityCommandBuffer& GetEndSimECB();
+
+	// ─── Persistent entities ──────────────────────────────────────
+
+	FEntityHandle CreatePersistentEntity(const ComponentMaskType& Mask);
 	void DestroyPersistentEntity(FEntityHandle Handle);
 
 	[[nodiscard]] const std::vector<FEntityHandle>& GetPersistentEntities() const { return PersistentEntities; }
 
-	[[nodiscard]] bool IsPersistentEntity(FEntityHandle Handle) const
-	{
-		for (FEntityHandle H : PersistentEntities)
-		{
-			if (H.Index == Handle.Index && H.Generation == Handle.Generation)
-				return true;
-		}
-		return false;
-	}
+	[[nodiscard]] bool IsPersistentEntity(FEntityHandle Handle) const;
 
 	template <typename T>
 	T* GetPersistentComponent()
@@ -78,20 +138,9 @@ public:
 		return nullptr;
 	}
 
-	// ─── Level management ───
-
-	/** Load a level's entities from its blob. */
-	bool LoadLevelFromBlob(const std::vector<std::uint8_t>& Blob);
-	/** Serialize all non-persistent entities to blob. */
-	std::vector<std::uint8_t> SaveLevelToBlob() const;
-	/** Remove all non-persistent entities from the world. */
-	void UnloadAllLevels();
-
 private:
 	FEntityManager Manager;
-	std::vector<ISystem*> Systems;
-	FSystemScheduler Scheduler;
-
+	std::vector<FSystemGroup*> SystemGroups;
 	std::vector<FEntityHandle> PersistentEntities;
 };
 

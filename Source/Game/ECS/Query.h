@@ -37,10 +37,14 @@ struct TChunkView
 };
 
 /**
- * Query: iterates over all chunks across all matching archetypes.
+ * Query builder over entities.
+ *
  * Usage:
- *   for (auto& View : Query.Iterate(Manager))
- *     View.ForEach([](FEntityHandle H, TransformComponent& T, ...) { ... });
+ *   auto Q = World.Query<FPosition, FVelocity>().Not<FDeadTag>();
+ *   Q.ForEach([](FEntityHandle H, FPosition& Pos, const FVelocity& Vel) { ... });
+ *
+ * Optional tags (With<>):
+ *   auto Q = World.Query<FPosition>().With<FSelectedTag>();
  */
 template <typename... Ts>
 struct TComponentQuery
@@ -49,14 +53,41 @@ struct TComponentQuery
 
 	void Gather(const class FEntityManager& Manager);
 
+	/** Exclude entities that have any of the given components/tags. */
+	template <typename... Us>
+	TComponentQuery& Not()
+	{
+		ExcludedMask |= MakeComponentMask<Us...>();
+		return *this;
+	}
+
+	/** Require entities to have these additional components/tags (already gathered, just filter). */
+	template <typename... Us>
+	TComponentQuery& With()
+	{
+		OptionalMask |= MakeComponentMask<Us...>();
+		return *this;
+	}
+
 	template <typename F>
 	void ForEach(F&& Func)
 	{
 		for (auto& View : Views)
 		{
+			// If OptionalMask is set, skip chunks whose archetype doesn't contain it
+			if (OptionalMask.any())
+			{
+				if ((View.Chunk->Mask & OptionalMask) != OptionalMask)
+				{
+					continue;
+				}
+			}
 			View.ForEach(std::forward<F>(Func));
 		}
 	}
+
+	ComponentMaskType ExcludedMask;
+	ComponentMaskType OptionalMask;
 };
 
 } // namespace Maho

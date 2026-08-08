@@ -1,5 +1,7 @@
 #include "Game/World/WorldLayer.h"
 #include "Game/World/Components/TransformComponent.h"
+#include "Game/World/Systems/MovementSystem.h"
+#include "Game/World/Systems/CameraSystem.h"
 #include "Game/Components/AllComponents.h"
 
 #include <Core/Application/App.h>
@@ -21,63 +23,59 @@ bool FWorldLayer::ExecuteStage(Maho::EEngineStage Stage)
 	{
 	case Maho::EEngineStage::Init:
 		break;
+
 	case Maho::EEngineStage::Attach:
 		if (!bWorldReady)
 		{
-			ECSWorld.AddSystem(&MovementSystem);
-			ECSWorld.AddSystem(&CameraSystem);
-
-			auto& Manager = ECSWorld.GetEntityManager();
+			// Set up simulation group with systems
+			auto& SimGroup = ECSWorld.GetOrCreateSystemGroup<Maho::FSimulationSystemGroup>();
+			SimGroup.AddSystem<FMovementSystem>();
+			SimGroup.AddSystem<FCameraSystem>();
 
 			// Spawn demo entity with a TransformComponent.
-			Maho::ComponentMaskType Mask = Maho::MakeComponentMask<Maho::FTransformComponent>();
-			Maho::FEntityHandle Handle = Manager.CreateEntity(Mask);
-			Maho::FTransformComponent* Transform = Manager.GetComponent<Maho::FTransformComponent>(Handle);
-			if (Transform != nullptr)
-			{
-				Transform->SetIdentity();
-			}
+			Maho::FEntityHandle Handle = ECSWorld.CreateEntity();
+			Maho::FTransformComponent Transform;
+			Transform.SetIdentity();
+			ECSWorld.SetComponent<Maho::FTransformComponent>(Handle, Transform);
 
 			// ─── Persistent camera entity ───
 			{
 				Maho::ComponentMaskType CamMask = Maho::MakeComponentMask<Maho::FTransformComponent, Maho::FCameraComponent>();
 				Maho::FEntityHandle CamHandle = ECSWorld.CreatePersistentEntity(CamMask);
 
-				Maho::FTransformComponent* CamTransform = Manager.GetComponent<Maho::FTransformComponent>(CamHandle);
-				if (CamTransform)
-				{
-					CamTransform->SetIdentity();
-					// Move camera slightly back
-					CamTransform->LocalToWorld[14] = -5.0f;
-				}
+				Maho::FTransformComponent CamTransform;
+				CamTransform.SetIdentity();
+				CamTransform.LocalToWorld[14] = -5.0f;
+				ECSWorld.GetEntityManager().SetComponent<Maho::FTransformComponent>(CamHandle, CamTransform);
 
-				Maho::FCameraComponent* CamComp = Manager.GetComponent<Maho::FCameraComponent>(CamHandle);
-				if (CamComp)
-				{
-					CamComp->bMainCamera = true;
-					CamComp->FOV = 60.0f;
-					CamComp->NearPlane = 0.1f;
-					CamComp->FarPlane = 1000.0f;
-					CamComp->AspectRatio = 16.0f / 9.0f;
-				}
+				Maho::FCameraComponent CamComp;
+				CamComp.bMainCamera = true;
+				CamComp.FOV = 60.0f;
+				CamComp.NearPlane = 0.1f;
+				CamComp.FarPlane = 1000.0f;
+				CamComp.AspectRatio = 16.0f / 9.0f;
+				ECSWorld.GetEntityManager().SetComponent<Maho::FCameraComponent>(CamHandle, CamComp);
 			}
 
 			bWorldReady = true;
 			MAHO_INFO("FWorldLayer: ECS world ready (\"{}\")", WorldName);
 		}
 		break;
+
 	case Maho::EEngineStage::Detach:
 		if (bWorldReady)
 		{
 			bWorldReady = false;
 		}
 		break;
+
 	case Maho::EEngineStage::Update:
 		if (bWorldReady && Maho::GApp)
 		{
 			ECSWorld.Tick(Maho::GApp->GetDeltaSeconds());
 		}
 		break;
+
 	case Maho::EEngineStage::PreRender:
 		if (bWorldReady && Maho::GApp)
 		{
@@ -86,9 +84,8 @@ bool FWorldLayer::ExecuteStage(Maho::EEngineStage Stage)
 			{
 				Maho::FSceneUpdatePacket Packet;
 				{
-				Maho::TComponentQuery<Maho::FTransformComponent> Query;
-				Query.Gather(ECSWorld.GetEntityManager());
-				Query.ForEach([&Packet](Maho::FEntityHandle Handle, const Maho::FTransformComponent& Transform)
+					auto Query = ECSWorld.Query<Maho::FTransformComponent>();
+					Query.ForEach([&Packet](Maho::FEntityHandle Handle, const Maho::FTransformComponent& Transform)
 					{
 						Maho::FSceneDrawItem Item;
 						Item.Type = Maho::EScenePrimitiveType::ColoredTriangle;
@@ -108,17 +105,14 @@ bool FWorldLayer::ExecuteStage(Maho::EEngineStage Stage)
 					CamData.AspectRatio = Cam->AspectRatio;
 					CamData.bOrthographic = Cam->bOrthographic;
 					CamData.OrthoSize = Cam->OrthoSize;
-					// View = inverse of camera LocalToWorld (rigid‑body inverse)
 					{
-						const float* M = CamTrans->LocalToWorld;   // column‑major
-						// Upper‑left 3x3 = rotation → transpose for inverse
+						const float* M = CamTrans->LocalToWorld;
 						float Rinv[9] = {
 							M[0], M[4], M[8],
 							M[1], M[5], M[9],
 							M[2], M[6], M[10],
 						};
 						float Tx = M[12], Ty = M[13], Tz = M[14];
-						// T_inv = -R^T * T
 						float TinvX = -(Rinv[0]*Tx + Rinv[3]*Ty + Rinv[6]*Tz);
 						float TinvY = -(Rinv[1]*Tx + Rinv[4]*Ty + Rinv[7]*Tz);
 						float TinvZ = -(Rinv[2]*Tx + Rinv[5]*Ty + Rinv[8]*Tz);
@@ -136,6 +130,7 @@ bool FWorldLayer::ExecuteStage(Maho::EEngineStage Stage)
 			}
 		}
 		break;
+
 	default:
 		break;
 	}

@@ -1,28 +1,597 @@
-#include "ECS/EntityManager.h"
+#include "Game/ECS/EntityManager.h"
 
 #include <algorithm>
 #include <cassert>
+#include <cstring>
 
 namespace Maho
 {
 
 FEntityManager::~FEntityManager()
 {
-	for (auto& E : Archetypes)
+	for (auto& Entry : Archetypes)
 	{
-		for (FChunk* C : E.Archetype->Chunks)
-		{
-			delete C;
-		}
-		delete E.Archetype;
+		delete Entry.Archetype;
 	}
 	Archetypes.clear();
 
 	for (auto& Op : PendingAdds)
 	{
-		::operator delete(Op.ComponentData);
+		if (Op.ComponentData)
+		{
+			::operator delete(Op.ComponentData);
+		}
 	}
 	PendingAdds.clear();
+}
+
+// ─── Entity lifecycle ──────────────────────────────────────────
+
+FEntityHandle FEntityManager::CreateEntity()
+{
+	return CreateEntity(ComponentMaskType{});
+}
+
+FEntityHandle FEntityManager::CreateEntity(const ComponentMaskType& Mask)
+{
+	FEntityHandle Handle;
+
+	if (!FreeIndices.empty())
+	{
+		std::uint32_t Index = FreeIndices.back();
+		FreeIndices.pop_back();
+		FEntitySlot& Slot = EntitySlots[Index];
+		Slot.Generation++;
+		Slot.bAlive = true;
+		Handle = FEntityHandle::Make(Index, Slot.Generation);
+	}
+	else
+	{
+		std::uint32_t Index = static_cast<std::uint32_t>(EntitySlots.size());
+		EntitySlots.emplace_back();
+		FEntitySlot& Slot = EntitySlots.back();
+		Slot.Generation = 1;
+		Slot.bAlive = true;
+		Handle = FEntityHandle::Make(Index, 1);
+	}
+
+	if (Mask.any())
+	{
+		FArchetype* Archetype = FindOrCreateArchetype(Mask);
+		if (Archetype != nullptr)
+		{
+			// Find or allocate a chunk with space
+			FChunk* TargetChunk = nullptr;
+			for (FChunk* C : Archetype->Chunks)
+			{
+				if (!C->IsFull())
+				{
+					TargetChunk = C;
+					break;
+				}
+			}
+			if (TargetChunk == nullptr)
+			{
+				TargetChunk = Archetype->AllocateChunk();
+			}
+
+			std::size_t Row = TargetChunk->Count;
+			TargetChunk->GetEntityRows()[Row].Handle = Handle;
+			TargetChunk->Count++;
+
+			std::size_t ArchetypeIndex = 0;
+			for (std::size_t I = 0; I < Archetypes.size(); ++I)
+			{
+				if (Archetypes[I].Archetype == Archetype)
+				{
+					ArchetypeIndex = I;
+					break;
+				}
+			}
+
+			FEntitySlot& Slot = GetSlot(Handle.Index);
+			Slot.Chunk = TargetChunk;
+			Slot.Row = Row;
+			Slot.ArchetypeIndex = ArchetypeIndex;
+		}
+	}
+
+	EntityCount++;
+	return Handle;
+}
+
+void FEntityManager::DestroyEntity(FEntityHandle Handle)
+{
+	if (!IsValid(Handle))
+	{
+		return;
+	}
+
+	FEntitySlot& Slot = GetSlot(Handle.Index);
+	FChunk* Chunk = Slot.Chunk;
+	std::size_t Row = Slot.Row;
+
+	// Swap-remove from chunk
+	if (Chunk != nullptr && Chunk->Count > 1 && Row < Chunk->Count - 1)
+	{
+		std::size_t LastRow = Chunk->Count - 1;
+
+		// Copy entity row
+		Chunk->GetEntityRows()[Row] = Chunk->GetEntityRows()[LastRow];
+		FEntityHandle MovedHandle = Chunk->GetEntityRows()[Row].Handle;
+
+		// Update moved entity's slot
+		FEntitySlot& MovedSlot = GetSlot(MovedHandle.Index);
+		MovedSlot.Row = Row;
+
+		// Copy component data for all data columns
+		const ComponentMaskType& M = Chunk->Mask;
+		for (std::size_t TypeIdx = 0; TypeIdx < ECSMaxComponentTypes; ++TypeIdx)
+		{
+			if (M.test(TypeIdx))
+			{
+				std::size_t CompSize = Internal::GetComponentSize(static_cast<FComponentTypeId>(TypeIdx));
+				if (CompSize > 0)
+				{
+					void* Col = Chunk->GetComponentColumn(TypeIdx);
+					if (Col)
+					{
+						std::memcpy(static_cast<char*>(Col) + Row * CompSize,
+						            static_cast<const char*>(Col) + LastRow * CompSize,
+						            CompSize);
+					}
+				}
+			}
+		}
+	}
+
+	if (Chunk != nullptr)
+	{
+		Chunk->Count--;
+	}
+
+	// Invalidate slot
+	Slot.bAlive = false;
+	Slot.Chunk = nullptr;
+	Slot.Row = 0;
+	Slot.ArchetypeIndex = 0;
+	FreeIndices.push_back(Handle.Index);
+	EntityCount--;
+}
+
+bool FEntityManager::IsValid(FEntityHandle Handle) const
+{
+	if (!Handle.IsValid() || Handle.Index >= EntitySlots.size())
+	{
+		return false;
+	}
+	const FEntitySlot& Slot = EntitySlots[Handle.Index];
+	return Slot.bAlive && Slot.Generation == Handle.Generation;
+}
+
+// ─── Deferred operations ────────────────────────────────────────
+
+void FEntityManager::EndFrame()
+{
+	// Process adds
+	for (auto& Op : PendingAdds)
+	{
+		if (!IsValid(Op.Handle))
+		{
+			if (Op.ComponentData)
+			{
+				::operator delete(Op.ComponentData);
+			}
+			continue;
+		}
+
+		ComponentMaskType CurrentMask = GetComponentMask(Op.Handle);
+		ComponentMaskType NewMask = CurrentMask | Op.Mask;
+
+		if (NewMask == CurrentMask)
+		{
+			if (Op.ComponentData)
+			{
+				::operator delete(Op.ComponentData);
+			}
+			continue;
+		}
+
+		FArchetype* ToArchetype = FindOrCreateArchetype(NewMask);
+		if (ToArchetype == nullptr)
+		{
+			if (Op.ComponentData)
+			{
+				::operator delete(Op.ComponentData);
+			}
+			continue;
+		}
+
+		std::vector<char> NewData;
+		if (Op.ComponentData && Op.ComponentSize > 0)
+		{
+			NewData.resize(Op.ComponentSize);
+			std::memcpy(NewData.data(), Op.ComponentData, Op.ComponentSize);
+		}
+
+		MigrateEntityInternal(Op.Handle, ToArchetype, NewData);
+
+		if (Op.ComponentData)
+		{
+			::operator delete(Op.ComponentData);
+		}
+	}
+	PendingAdds.clear();
+
+	// Process removes
+	for (auto& Op : PendingRemoves)
+	{
+		if (!IsValid(Op.Handle))
+		{
+			continue;
+		}
+
+		ComponentMaskType CurrentMask = GetComponentMask(Op.Handle);
+		ComponentMaskType NewMask = CurrentMask & ~Op.Mask;
+
+		if (NewMask == CurrentMask)
+		{
+			continue;
+		}
+
+		FArchetype* ToArchetype = FindOrCreateArchetype(NewMask);
+		if (ToArchetype == nullptr)
+		{
+			if (NewMask.none())
+			{
+				// Remove from archetype, entity becomes componentless
+				MigrateEntityInternal(Op.Handle, ToArchetype, {});
+			}
+			continue;
+		}
+
+		MigrateEntityInternal(Op.Handle, ToArchetype, {});
+	}
+	PendingRemoves.clear();
+}
+
+// ─── Query support ─────────────────────────────────────────────
+
+void FEntityManager::GatherMatchingChunks(const ComponentMaskType& Required,
+                                           const ComponentMaskType& Excluded,
+                                           std::vector<FChunk*>& OutChunks) const
+{
+	for (const auto& Entry : Archetypes)
+	{
+		if (Entry.Archetype == nullptr)
+		{
+			continue;
+		}
+
+		const ComponentMaskType& ArchetypeMask = Entry.Archetype->Mask;
+
+		// ArchetypeMask must contain all Required bits
+		if ((ArchetypeMask & Required) != Required)
+		{
+			continue;
+		}
+
+		// ArchetypeMask must NOT contain any Excluded bits
+		if ((ArchetypeMask & Excluded).any())
+		{
+			continue;
+		}
+
+		for (FChunk* C : Entry.Archetype->Chunks)
+		{
+			if (!C->IsEmpty())
+			{
+				OutChunks.push_back(C);
+			}
+		}
+	}
+}
+
+// ─── Type-erased operations ─────────────────────────────────────
+
+void FEntityManager::SetComponentTypeErased(FEntityHandle Handle, FComponentTypeId TypeId,
+                                              const void* Data, std::size_t DataSize)
+{
+	if (!IsValid(Handle) || Data == nullptr || DataSize == 0)
+	{
+		return;
+	}
+
+	ComponentMaskType NewMask = GetComponentMask(Handle);
+	NewMask.set(TypeId);
+
+	FArchetype* ToArchetype = FindOrCreateArchetype(NewMask);
+	if (ToArchetype == nullptr)
+	{
+		return;
+	}
+
+	std::vector<char> CompData(DataSize);
+	std::memcpy(CompData.data(), Data, DataSize);
+
+	MigrateEntityInternal(Handle, ToArchetype, CompData);
+}
+
+void FEntityManager::AddComponentTypeErased(FEntityHandle Handle, FComponentTypeId TypeId,
+                                              const void* Data, std::size_t DataSize)
+{
+	if (!IsValid(Handle) || Data == nullptr || DataSize == 0)
+	{
+		return;
+	}
+	void* Stored = ::operator new(DataSize);
+	std::memcpy(Stored, Data, DataSize);
+
+	ComponentMaskType TypeMask;
+	TypeMask.set(TypeId);
+
+	PendingAdds.push_back({Handle, TypeMask, DataSize, Stored});
+}
+
+void FEntityManager::RemoveComponentTypeErased(FEntityHandle Handle, FComponentTypeId TypeId)
+{
+	if (!IsValid(Handle))
+	{
+		return;
+	}
+	ComponentMaskType TypeMask;
+	TypeMask.set(TypeId);
+
+	PendingRemoves.push_back({Handle, TypeMask, 0, nullptr});
+}
+
+void FEntityManager::AddTagTypeErased(FEntityHandle Handle, FComponentTypeId TypeId)
+{
+	if (!IsValid(Handle))
+	{
+		return;
+	}
+
+	ComponentMaskType CurrentMask = GetComponentMask(Handle);
+	if (CurrentMask.test(TypeId))
+	{
+		return;
+	}
+
+	ComponentMaskType NewMask = CurrentMask;
+	NewMask.set(TypeId);
+
+	FArchetype* ToArchetype = FindOrCreateArchetype(NewMask);
+	if (ToArchetype == nullptr)
+	{
+		return;
+	}
+
+	MigrateEntityInternal(Handle, ToArchetype, {});
+}
+
+void FEntityManager::RemoveTagTypeErased(FEntityHandle Handle, FComponentTypeId TypeId)
+{
+	if (!IsValid(Handle))
+	{
+		return;
+	}
+
+	ComponentMaskType CurrentMask = GetComponentMask(Handle);
+	if (!CurrentMask.test(TypeId))
+	{
+		return;
+	}
+
+	ComponentMaskType NewMask = CurrentMask;
+	NewMask.reset(TypeId);
+
+	FArchetype* ToArchetype = FindOrCreateArchetype(NewMask);
+	if (ToArchetype == nullptr)
+	{
+		return;
+	}
+
+	MigrateEntityInternal(Handle, ToArchetype, {});
+}
+
+// ─── Internal helpers ──────────────────────────────────────────
+
+FEntityManager::FEntityLocation FEntityManager::LocateEntity(FEntityHandle Handle) const
+{
+	FEntityLocation Loc;
+	if (!Handle.IsValid() || Handle.Index >= EntitySlots.size())
+	{
+		return Loc;
+	}
+
+	const FEntitySlot& Slot = EntitySlots[Handle.Index];
+	if (!Slot.bAlive || Slot.Generation != Handle.Generation)
+	{
+		return Loc;
+	}
+
+	Loc.Chunk = Slot.Chunk;
+	Loc.Row = Slot.Row;
+	Loc.ArchetypeIndex = Slot.ArchetypeIndex;
+	return Loc;
+}
+
+FArchetype* FEntityManager::FindOrCreateArchetype(const ComponentMaskType& Mask)
+{
+	for (auto& Entry : Archetypes)
+	{
+		if (Entry.Archetype != nullptr && Entry.Archetype->MatchesMask(Mask))
+		{
+			return Entry.Archetype;
+		}
+	}
+
+	// Compute component sizes from registry
+	std::vector<std::size_t> Sizes(ECSMaxComponentTypes, 0);
+	for (std::size_t I = 0; I < ECSMaxComponentTypes; ++I)
+	{
+		if (Mask.test(I))
+		{
+			Sizes[I] = Internal::GetComponentSize(static_cast<FComponentTypeId>(I));
+		}
+	}
+
+	FArchetype* NewArch = new FArchetype(Mask, Sizes);
+	FEntityManager::FArchetypeEntry Entry;
+	Entry.Archetype = NewArch;
+	Archetypes.push_back(Entry);
+
+	return NewArch;
+}
+
+void FEntityManager::MigrateEntityInternal(FEntityHandle Handle, FArchetype* ToArchetype,
+                                             const std::vector<char>& NewComponentsData)
+{
+	if (!IsValid(Handle) || ToArchetype == nullptr)
+	{
+		return;
+	}
+
+	FEntitySlot& Slot = GetSlot(Handle.Index);
+	FChunk* FromChunk = Slot.Chunk;
+	std::size_t FromRow = Slot.Row;
+
+	// Find target archetype index
+	std::size_t ToArchIndex = 0;
+	for (std::size_t I = 0; I < Archetypes.size(); ++I)
+	{
+		if (Archetypes[I].Archetype == ToArchetype)
+		{
+			ToArchIndex = I;
+			break;
+		}
+	}
+
+	// Allocate space in target archetype
+	FChunk* ToChunk = nullptr;
+	for (FChunk* C : ToArchetype->Chunks)
+	{
+		if (!C->IsFull())
+		{
+			ToChunk = C;
+			break;
+		}
+	}
+	if (ToChunk == nullptr)
+	{
+		ToChunk = ToArchetype->AllocateChunk();
+	}
+
+	std::size_t ToRow = ToChunk->Count;
+
+	// Copy entity handle
+	ToChunk->GetEntityRows()[ToRow].Handle = Handle;
+
+	// Copy all component data from old location (if exists) to new location
+	// Only copy components that exist in BOTH archetypes
+	if (FromChunk != nullptr)
+	{
+		const ComponentMaskType& FromMask = FromChunk->Mask;
+		const ComponentMaskType& ToMask = ToChunk->Mask;
+
+		for (std::size_t TypeIdx = 0; TypeIdx < ECSMaxComponentTypes; ++TypeIdx)
+		{
+			if (FromMask.test(TypeIdx) && ToMask.test(TypeIdx))
+			{
+				std::size_t CompSize = Internal::GetComponentSize(static_cast<FComponentTypeId>(TypeIdx));
+				if (CompSize > 0)
+				{
+					const void* FromCol = FromChunk->GetComponentColumn(TypeIdx);
+					void* ToCol = ToChunk->GetComponentColumn(TypeIdx);
+					if (FromCol && ToCol)
+					{
+						std::memcpy(static_cast<char*>(ToCol) + ToRow * CompSize,
+						            static_cast<const char*>(FromCol) + FromRow * CompSize,
+						            CompSize);
+					}
+				}
+			}
+		}
+	}
+
+	// Copy new component data
+	if (!NewComponentsData.empty() && ToChunk->Mask.any())
+	{
+		// Find which bits were added (in ToMask but not in FromMask)
+		ComponentMaskType FromMask;
+		if (FromChunk != nullptr)
+		{
+			FromMask = FromChunk->Mask;
+		}
+		ComponentMaskType AddedMask = ToChunk->Mask & ~FromMask;
+
+		std::size_t NewDataOffset = 0;
+		if (AddedMask.any())
+		{
+			for (std::size_t TypeIdx = 0; TypeIdx < ECSMaxComponentTypes; ++TypeIdx)
+			{
+				if (AddedMask.test(TypeIdx))
+				{
+					std::size_t CompSize = Internal::GetComponentSize(static_cast<FComponentTypeId>(TypeIdx));
+					if (CompSize > 0 && NewDataOffset < NewComponentsData.size())
+					{
+						void* ToCol = ToChunk->GetComponentColumn(TypeIdx);
+						if (ToCol)
+						{
+							std::size_t CopySize = std::min(CompSize, NewComponentsData.size() - NewDataOffset);
+							std::memcpy(static_cast<char*>(ToCol) + ToRow * CompSize,
+							            NewComponentsData.data() + NewDataOffset,
+							            CopySize);
+							NewDataOffset += CopySize;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	ToChunk->Count++;
+
+	// Remove from old chunk (swap-remove)
+	if (FromChunk != nullptr)
+	{
+		if (FromChunk->Count > 1 && FromRow < FromChunk->Count - 1)
+		{
+			std::size_t LastRow = FromChunk->Count - 1;
+
+			FromChunk->GetEntityRows()[FromRow] = FromChunk->GetEntityRows()[LastRow];
+			FEntityHandle MovedHandle = FromChunk->GetEntityRows()[FromRow].Handle;
+
+			FEntitySlot& MovedSlot = GetSlot(MovedHandle.Index);
+			MovedSlot.Row = FromRow;
+
+			const ComponentMaskType& M = FromChunk->Mask;
+			for (std::size_t TypeIdx = 0; TypeIdx < ECSMaxComponentTypes; ++TypeIdx)
+			{
+				if (M.test(TypeIdx))
+				{
+					std::size_t CompSize = Internal::GetComponentSize(static_cast<FComponentTypeId>(TypeIdx));
+					if (CompSize > 0)
+					{
+						void* Col = FromChunk->GetComponentColumn(TypeIdx);
+						if (Col)
+						{
+							std::memcpy(static_cast<char*>(Col) + FromRow * CompSize,
+							            static_cast<const char*>(Col) + LastRow * CompSize,
+							            CompSize);
+						}
+					}
+				}
+			}
+		}
+		FromChunk->Count--;
+	}
+
+	// Update slot
+	Slot.Chunk = ToChunk;
+	Slot.Row = ToRow;
+	Slot.ArchetypeIndex = ToArchIndex;
 }
 
 FEntityManager::FEntitySlot& FEntityManager::GetSlot(std::uint32_t Index)
@@ -36,295 +605,7 @@ FEntityManager::FEntitySlot& FEntityManager::GetSlot(std::uint32_t Index)
 
 const FEntityManager::FEntitySlot& FEntityManager::GetSlot(std::uint32_t Index) const
 {
-	static FEntitySlot DeadSlot;
-	if (Index >= EntitySlots.size())
-	{
-		return DeadSlot;
-	}
 	return EntitySlots[Index];
-}
-
-FEntityHandle FEntityManager::CreateEntity(const ComponentMaskType& Mask)
-{
-	// Collect component sizes for matching archetype.
-	std::vector<std::size_t> Sizes;
-	Sizes.reserve(ECSMaxComponentTypes);
-	for (std::size_t Bit = 0; Bit < ECSMaxComponentTypes; ++Bit)
-	{
-		if (Mask.test(Bit))
-		{
-			Sizes.push_back(4); // Minimum 4-byte alignment placeholder
-		}
-	}
-
-	FArchetype* Archetype = FindOrCreateArchetype(Mask, Sizes);
-	FChunk* Chunk = AllocateChunk(*Archetype);
-
-	std::uint32_t Index;
-	if (!FreeIndices.empty())
-	{
-		Index = FreeIndices.back();
-		FreeIndices.pop_back();
-	}
-	else
-	{
-		Index = static_cast<std::uint32_t>(EntitySlots.size());
-	}
-
-	FEntitySlot& Slot = GetSlot(Index);
-	Slot.Chunk = Chunk;
-	Slot.Row = Chunk->Count;
-	Slot.ArchetypeIndex = 0;
-	for (std::size_t I = 0; I < Archetypes.size(); ++I)
-	{
-		if (Archetypes[I].Archetype == Archetype)
-		{
-			Slot.ArchetypeIndex = I;
-			break;
-		}
-	}
-	Slot.bAlive = true;
-
-	// Init entity row.
-	FEntityRow* Rows = Chunk->GetEntityRows();
-	Rows[Chunk->Count].Handle = FEntityHandle::Make(Index, Slot.Generation);
-
-	Chunk->Count++;
-	EntityCount++;
-
-	return FEntityHandle::Make(Index, Slot.Generation);
-}
-
-void FEntityManager::DestroyEntity(FEntityHandle Handle)
-{
-	if (!Handle.IsValid() || Handle.Index >= EntitySlots.size())
-	{
-		return;
-	}
-
-	FEntitySlot& Slot = GetSlot(Handle.Index);
-	if (!Slot.bAlive || Slot.Generation != Handle.Generation)
-	{
-		return;
-	}
-
-	// Move-last entity into this slot (swap+pop compaction within chunk).
-	FChunk* Chunk = Slot.Chunk;
-	std::size_t LastRow = Chunk->Count - 1;
-	if (Slot.Row != LastRow && LastRow < ECSChunkSize)
-	{
-		FEntityRow* Rows = Chunk->GetEntityRows();
-
-		// Move entity row.
-		Rows[Slot.Row] = Rows[LastRow];
-
-		// Update moved entity's slot mapping.
-		std::uint32_t MovedIndex = Rows[LastRow].Handle.Index;
-		if (MovedIndex < EntitySlots.size())
-		{
-			EntitySlots[MovedIndex].Row = Slot.Row;
-		}
-
-		// Move component data columns.
-		for (std::size_t Col = 0; Col < Chunk->ColumnSizes.size(); ++Col)
-		{
-			char* ColData = static_cast<char*>(Chunk->GetComponentColumn(Col));
-			std::memcpy(ColData + Slot.Row * Chunk->ColumnSizes[Col],
-			            ColData + LastRow * Chunk->ColumnSizes[Col],
-			            Chunk->ColumnSizes[Col]);
-		}
-	}
-
-	Chunk->Count--;
-
-	Slot.bAlive = false;
-	Slot.Generation++;
-	Slot.Chunk = nullptr;
-	FreeIndices.push_back(Handle.Index);
-	EntityCount--;
-}
-
-bool FEntityManager::IsValid(FEntityHandle Handle) const
-{
-	if (!Handle.IsValid() || Handle.Index >= EntitySlots.size())
-	{
-		return false;
-	}
-	const FEntitySlot& Slot = GetSlot(Handle.Index);
-	return Slot.bAlive && Slot.Generation == Handle.Generation;
-}
-
-FEntityManager::FEntityLocation FEntityManager::LocateEntity(FEntityHandle Handle) const
-{
-	FEntityLocation Loc;
-	if (!Handle.IsValid() || Handle.Index >= EntitySlots.size())
-	{
-		return Loc;
-	}
-	const FEntitySlot& Slot = GetSlot(Handle.Index);
-	if (!Slot.bAlive || Slot.Generation != Handle.Generation)
-	{
-		return Loc;
-	}
-	Loc.Chunk = Slot.Chunk;
-	Loc.Row = Slot.Row;
-	Loc.ArchetypeIndex = Slot.ArchetypeIndex;
-	return Loc;
-}
-
-FArchetype* FEntityManager::FindOrCreateArchetype(const ComponentMaskType& Mask, const std::vector<std::size_t>& Sizes)
-{
-	for (auto& E : Archetypes)
-	{
-		if (E.Archetype->MatchesMask(Mask))
-		{
-			return E.Archetype;
-		}
-	}
-
-	auto* A = new FArchetype(Mask, Sizes);
-	Archetypes.push_back({A, Sizes});
-	return A;
-}
-
-FChunk* FEntityManager::AllocateChunk(FArchetype& Archetype)
-{
-	if (!Archetype.Chunks.empty() && !Archetype.Chunks.back()->IsFull())
-	{
-		return Archetype.Chunks.back();
-	}
-
-	auto* Chunk = new FChunk(Archetype.Mask, Archetype.ComponentSizes, Archetype.ComponentOffsets);
-	Archetype.Chunks.push_back(Chunk);
-	return Chunk;
-}
-
-void FEntityManager::MigrateEntity(FEntityHandle Handle, FArchetype& FromArchetype, FArchetype* ToArchetype, const std::vector<char>& NewComponentsData)
-{
-	// Simplified migration: destroy old entity and create new one in target archetype.
-	// Full implementation would move in-place without handle change.
-	FEntityLocation OldLoc = LocateEntity(Handle);
-	if (OldLoc.Chunk == nullptr)
-	{
-		return;
-	}
-
-	// Copy existing component data into target archetype.
-	std::vector<char> Data(FromArchetype.EntityRowSize);
-	char* Src = reinterpret_cast<char*>(OldLoc.Chunk->GetEntityRows()) + OldLoc.Row * FromArchetype.EntityRowSize;
-	std::memcpy(Data.data(), Src, FromArchetype.EntityRowSize);
-
-	// Destroy current placement.
-	DestroyEntity(Handle);
-
-	// Create in new archetype.
-	FEntityHandle NewHandle = CreateEntity(ToArchetype->Mask);
-	FEntityLocation NewLoc = LocateEntity(NewHandle);
-	if (NewLoc.Chunk == nullptr)
-	{
-		return;
-	}
-
-	// Copy entity row header.
-	FEntityRow* OldRows = reinterpret_cast<FEntityRow*>(Data.data());
-	FEntityRow* NewRows = NewLoc.Chunk->GetEntityRows();
-	NewRows[NewLoc.Row] = OldRows[0];
-
-	// Copy existing component columns into the destination chunk.
-	std::size_t CommonSize = std::min(FromArchetype.EntityRowSize, ToArchetype->EntityRowSize);
-	if (CommonSize > sizeof(FEntityRow))
-	{
-		char* Dst = reinterpret_cast<char*>(NewLoc.Chunk->GetEntityRows()) + NewLoc.Row * ToArchetype->EntityRowSize;
-		std::memcpy(Dst + sizeof(FEntityRow), Data.data() + sizeof(FEntityRow), CommonSize - sizeof(FEntityRow));
-	}
-
-	// Apply newly added component data at the end.
-	if (!NewComponentsData.empty())
-	{
-		char* Dst = reinterpret_cast<char*>(NewLoc.Chunk->GetEntityRows()) + NewLoc.Row * ToArchetype->EntityRowSize;
-		std::memcpy(Dst + sizeof(FEntityRow) + FromArchetype.ComponentOffsets.back() + FromArchetype.ComponentSizes.back(),
-		            NewComponentsData.data(),
-		            NewComponentsData.size());
-	}
-}
-
-void FEntityManager::GatherMatchingChunks(const ComponentMaskType& Mask, std::vector<FChunk*>& OutChunks) const
-{
-	for (const auto& E : Archetypes)
-	{
-		if ((E.Archetype->Mask & Mask) == Mask)
-		{
-			for (FChunk* C : E.Archetype->Chunks)
-			{
-				if (!C->IsEmpty())
-				{
-					OutChunks.push_back(C);
-				}
-			}
-		}
-	}
-}
-
-void FEntityManager::EndFrame()
-{
-	// Process deferred additions.
-	for (auto& Op : PendingAdds)
-	{
-		if (!IsValid(Op.Handle))
-		{
-			continue;
-		}
-
-		FEntitySlot& Slot = GetSlot(Op.Handle.Index);
-		if (!Slot.bAlive)
-		{
-			continue;
-		}
-
-		FArchetype* Current = Archetypes[Slot.ArchetypeIndex].Archetype;
-		ComponentMaskType NewMask = Current->Mask | Op.Mask;
-
-		std::vector<std::size_t> NewSizes = Archetypes[Slot.ArchetypeIndex].ComponentSizes;
-		NewSizes.push_back(Op.ComponentSize);
-
-		FArchetype* Target = FindOrCreateArchetype(NewMask, NewSizes);
-		std::vector<char> CompData(static_cast<const char*>(Op.ComponentData), static_cast<const char*>(Op.ComponentData) + Op.ComponentSize);
-		MigrateEntity(Op.Handle, *Current, Target, CompData);
-
-		::operator delete(Op.ComponentData);
-	}
-	PendingAdds.clear();
-
-	// Process deferred removals.
-	for (auto& Op : PendingRemoves)
-	{
-		if (!IsValid(Op.Handle))
-		{
-			continue;
-		}
-
-		FEntitySlot& Slot = GetSlot(Op.Handle.Index);
-		if (!Slot.bAlive)
-		{
-			continue;
-		}
-
-		FArchetype* Current = Archetypes[Slot.ArchetypeIndex].Archetype;
-		ComponentMaskType NewMask = Current->Mask & ~Op.Mask;
-
-		std::vector<std::size_t> NewSizes;
-		for (std::size_t Bit = 0; Bit < ECSMaxComponentTypes; ++Bit)
-		{
-			if (NewMask.test(Bit))
-			{
-				NewSizes.push_back(4); // Simplified
-			}
-		}
-
-		FArchetype* Target = FindOrCreateArchetype(NewMask, NewSizes);
-		MigrateEntity(Op.Handle, *Current, Target, {});
-	}
-	PendingRemoves.clear();
 }
 
 } // namespace Maho

@@ -1,10 +1,10 @@
 #pragma once
 
 #include "ECS/World.h"
-#include "World/Systems/MovementSystem.h"
-#include "World/Systems/CameraSystem.h"
 
 #include <Core/Sequencer/EngineExtension.h>
+
+#include <string>
 
 /**
  * Project layer that owns and ticks the ECS world.
@@ -17,13 +17,11 @@ public:
 
 	virtual bool ExecuteStage(Maho::EEngineStage Stage) override;
 
-	[[nodiscard]] Maho::FECSWorld& GetECSWorld() { return ECSWorld; }
-	[[nodiscard]] const Maho::FECSWorld& GetECSWorld() const { return ECSWorld; }
+	[[nodiscard]] Maho::FWorld& GetECSWorld() { return ECSWorld; }
+	[[nodiscard]] const Maho::FWorld& GetECSWorld() const { return ECSWorld; }
 
 private:
 	std::string WorldName;
-	Maho::FECSWorld ECSWorld;
-	FMovementSystem MovementSystem;
-	FCameraSystem CameraSystem;
+	Maho::FWorld ECSWorld;
 	bool bWorldReady = false;
 };

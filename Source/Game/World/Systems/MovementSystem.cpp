@@ -12,10 +12,9 @@ namespace
 	}
 }
 
-void FMovementSystem::OnUpdate(float DeltaTime, Maho::FECSWorld& World)
+void FMovementSystem::OnUpdate(float DeltaTime, Maho::FWorld& World)
 {
-	Maho::TComponentQuery<Maho::FTransformComponent> Query;
-	Query.Gather(World.GetEntityManager());
+	auto Query = World.Query<Maho::FTransformComponent>();
 	Query.ForEach([DeltaTime](Maho::FEntityHandle /*Handle*/, Maho::FTransformComponent& Transform)
 	{
 		ApplyRotation(Transform, DeltaTime);
