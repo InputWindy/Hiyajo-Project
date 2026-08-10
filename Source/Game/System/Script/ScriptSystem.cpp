@@ -3,7 +3,9 @@
 #include <Core/Application/App.h>
 #include <Core/System/Console.h>
 #include <Core/System/Log.h>
-#include "Game/System/Script/LuaObjectReflect.h"
+
+#define SOL_ALL_SAFETIES_ON 1
+#include <sol/sol.hpp>
 
 #include <filesystem>
 #include <utility>
@@ -148,7 +150,6 @@ bool FScriptSystem::InitializeLua(const std::string& InScriptsDirectory)
 	Impl->Lua["package"]["path"] = PackagePath;
 
 	RegisterCoreBindings(Impl->Lua);
-	RegisterLuaObjectReflectBindings(Impl->Lua);
 
 	bLuaInitialized = true;
 	MAHO_CORE_INFO("FScriptSystem Lua initialized (Scripts='{}')", ScriptsDirectory);

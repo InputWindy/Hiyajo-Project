@@ -1,38 +1,27 @@
 ﻿#include "Game/System/Resource/ResourceIO.h"
-#include "Game/System/Resource/ResourceCasset.h"
-#include "Game/System/Resource/TextureImageCodec.h"
-#include "Game/System/Resource/MeshModelCodec.h"
 
-#include <Core/System/Log.h>
-#include <Core/System/Paths.h>
+#include "Game/System/Resource/MeshModelCodec.h"
+#include "Game/System/Resource/TextureImageCodec.h"
+#include "Game/System/Resource/ResourceCasset.h"
+
 #include <Core/System/Utf8Path.h>
 
+#include <cctype>
 #include <filesystem>
-#include <unordered_set>
+#include <fstream>
 
 namespace Maho
 {
 
+// ── FCassetPackageImporter ─────────────────────────────────────
+
 bool FCassetPackageImporter::MatchesSourcePath(const std::string& SourcePath) const
 {
-	const std::string Ext = FPaths::GetPackageExtension();
-	if (SourcePath.size() < Ext.size())
-	{
-		return false;
-	}
-	const std::string Suffix = SourcePath.substr(SourcePath.size() - Ext.size());
-	for (std::size_t I = 0; I < Ext.size(); ++I)
-	{
-		const char A = Suffix[I];
-		const char B = Ext[I];
-		const char La = (A >= 'A' && A <= 'Z') ? static_cast<char>(A - 'A' + 'a') : A;
-		const char Lb = (B >= 'A' && B <= 'Z') ? static_cast<char>(B - 'A' + 'a') : B;
-		if (La != Lb)
-		{
-			return false;
-		}
-	}
-	return true;
+	const std::size_t Dot = SourcePath.find_last_of('.');
+	if (Dot == std::string::npos) return SourcePath.find(".casset") != std::string::npos;
+	std::string Ext = SourcePath.substr(Dot);
+	for (char& Ch : Ext) Ch = static_cast<char>(std::tolower(static_cast<unsigned char>(Ch)));
+	return Ext == ".casset";
 }
 
 bool FCassetPackageImporter::ApplyBulkData(
@@ -40,479 +29,259 @@ bool FCassetPackageImporter::ApplyBulkData(
 	FResourceImportConfig& Config,
 	FResourceBulkData& Bulk)
 {
-	(void)Config;
-	const std::string FilePath = Bulk.SourcePath.empty() ? Config.SourcePath : Bulk.SourcePath;
 	if (!ResourceCasset::IsCassetBinaryFile(Bulk.Bytes.data(), Bulk.Bytes.size()))
 	{
-		MAHO_CORE_ERROR(
-			"FCassetPackageImporter::ApplyBulkData: not MCAS binary '{}'",
-			FilePath);
+		MAHO_CORE_ERROR("FCassetPackageImporter: not a casset file '{}'", Config.SourcePath);
 		return false;
 	}
 
 	std::unordered_set<std::string> LoadingFilePaths;
-	return static_cast<bool>(
-		Manager.LoadPackageFromBinary(FilePath, Bulk.Bytes.data(), Bulk.Bytes.size(), LoadingFilePaths));
+	std::string PkgName = Manager.LoadPackageFromBinary(
+		Config.SourcePath,
+		Bulk.Bytes.data(),
+		Bulk.Bytes.size(),
+		LoadingFilePaths);
+
+	return !PkgName.empty();
 }
+
+// ── Texture Import/Export helpers ──────────────────────────────
 
 namespace
 {
 
-[[nodiscard]] bool CopyFileToDestination(
-	const std::string& SourcePath,
-	const std::string& DestinationPath,
-	bool bOverwrite)
+void CopyFileToDestination(const std::string& Src, const std::string& Dst, bool bOverwrite)
 {
 	namespace fs = std::filesystem;
 	std::error_code ErrorCode;
-	const fs::path Source = PathFromUtf8(SourcePath);
-	const fs::path Dest = PathFromUtf8(DestinationPath);
 
-	if (!fs::is_regular_file(Source, ErrorCode) || ErrorCode)
-	{
-		MAHO_CORE_ERROR("ResourceIO: source file missing or not regular '{}'", SourcePath);
-		return false;
-	}
+	const fs::path DestParent = PathFromUtf8(Dst).parent_path();
+	if (!DestParent.empty())
+		fs::create_directories(DestParent, ErrorCode);
 
-	if (!bOverwrite && fs::exists(Dest, ErrorCode) && !ErrorCode)
-	{
-		MAHO_CORE_ERROR("ResourceIO: destination exists and overwrite is disabled '{}'", DestinationPath);
-		return false;
-	}
+	if (fs::exists(PathFromUtf8(Dst), ErrorCode) && !bOverwrite)
+		return;
 
-	if (Dest.has_parent_path())
-	{
-		fs::create_directories(Dest.parent_path(), ErrorCode);
-		if (ErrorCode)
-		{
-			MAHO_CORE_ERROR(
-				"ResourceIO: failed to create parent dirs for '{}': {}",
-				DestinationPath,
-				ErrorCode.message());
-			return false;
-		}
-	}
-
-	fs::copy_file(
-		Source,
-		Dest,
-		bOverwrite ? fs::copy_options::overwrite_existing : fs::copy_options::none,
-		ErrorCode);
-	if (ErrorCode)
-	{
-		MAHO_CORE_ERROR(
-			"ResourceIO: copy '{}' → '{}' failed: {}",
-			SourcePath,
-			DestinationPath,
-			ErrorCode.message());
-		return false;
-	}
-	return true;
+	auto CopyOptions = fs::copy_options::overwrite_existing;
+	fs::copy_file(PathFromUtf8(Src), PathFromUtf8(Dst), CopyOptions, ErrorCode);
 }
 
 template <typename TTexture>
-[[nodiscard]] bool ImportTextureCpu(
+bool ImportTextureCpu(
 	FResourceImportConfig& Config,
 	FResourceBulkData& Bulk,
 	TTexture& Resource)
 {
-	if (Bulk.Bytes.empty() && Bulk.PreparedKind != EResourceBulkPreparedKind::TextureImage)
+	const bool bModelPrepared = Bulk.PreparedKind == EResourceBulkPreparedKind::Model
+		&& Bulk.Prepared;
+	const bool bTexturePrepared = Bulk.PreparedKind == EResourceBulkPreparedKind::TextureImage
+		&& Bulk.Prepared;
+
+	if (bTexturePrepared)
 	{
-		MAHO_CORE_ERROR("ResourceIO: empty BulkData for '{}'", Config.SourcePath);
-		return false;
+		const auto* Image = static_cast<const FDecodedImage*>(Bulk.Prepared.get());
+		FDecodedImage Copy = *Image;
+		Resource.SetCpuImage(Copy.Dimension, Copy.Format, Copy.Width, Copy.Height,
+			Copy.Depth, Copy.ArrayLayers, Copy.MipCount, Copy.bSRGB, std::move(Copy.Pixels));
 	}
-
-	const ETextureDimension ExpectedDimension = Resource.GetDimension();
-
-	FDecodedImage Image;
-	std::vector<std::uint8_t> Serialized = Bulk.Bytes;
-	if (Bulk.PreparedKind == EResourceBulkPreparedKind::TextureImage && Bulk.Prepared)
+	else if (!Bulk.Bytes.empty())
 	{
-		auto* Prepared = static_cast<FDecodedImage*>(Bulk.Prepared.get());
-		Image = *Prepared;
+		FDecodedImage Image;
+		if (!TextureImageCodec::DecodeFromMemory(Bulk.Bytes.data(), Bulk.Bytes.size(), Config.SourcePath, Image))
+			return false;
+		Resource.SetCpuImage(Image.Dimension, Image.Format, Image.Width, Image.Height,
+			Image.Depth, Image.ArrayLayers, Image.MipCount, Image.bSRGB, std::move(Image.Pixels));
 	}
 	else
 	{
-		if (!TextureImageCodec::DecodeFromMemory(
-				Bulk.Bytes.data(),
-				Bulk.Bytes.size(),
-				Config.SourcePath,
-				Image))
-		{
-			MAHO_CORE_ERROR("ResourceIO: decode failed for '{}'", Config.SourcePath);
-			return false;
-		}
-	}
-
-	if (Image.Dimension != ExpectedDimension)
-	{
-		MAHO_CORE_WARN(
-			"ResourceIO: '{}' decoded dimension {} vs type expectation {} (name hint / TypeHint may be wrong)",
-			Config.SourcePath,
-			static_cast<int>(Image.Dimension),
-			static_cast<int>(ExpectedDimension));
-	}
-
-	if (!TextureImageCodec::ApplyDecodedToTexture(Resource, std::move(Image)))
-	{
-		MAHO_CORE_ERROR("ResourceIO: ApplyDecodedToTexture failed for '{}'", Config.SourcePath);
 		return false;
 	}
-	if (!Serialized.empty())
-	{
-		Resource.SetSerializedSource(Config.SourcePath, std::move(Serialized));
-	}
+
+	Resource.MarkDirty();
 	return true;
 }
 
 template <typename TTexture>
-[[nodiscard]] bool ExportTextureCpu(FResourceExportConfig& Config, const TTexture& Resource)
+bool ExportTextureCpu(
+	FResourceExportConfig& Config,
+	const TTexture& Resource)
 {
-	if (!Resource.GetPixels().empty())
+	if (!Config.bOverwrite)
 	{
-		return TextureImageCodec::EncodeToFile(Resource, Config.DestinationPath, Config.bOverwrite);
+		namespace fs = std::filesystem;
+		std::error_code ErrorCode;
+		if (fs::exists(PathFromUtf8(Config.DestinationPath), ErrorCode) && !ErrorCode)
+			return false;
 	}
-	if (!Resource.GetSourcePath().empty())
+
+	if (Resource.HasSerializedSource())
 	{
-		return CopyFileToDestination(Resource.GetSourcePath(), Config.DestinationPath, Config.bOverwrite);
+		CopyFileToDestination(Resource.GetSourcePath(), Config.DestinationPath, Config.bOverwrite);
+		return true;
 	}
-	MAHO_CORE_ERROR("ResourceIO: export has neither CPU pixels nor SourcePath");
-	return false;
+
+	return TextureImageCodec::EncodeToFile(Resource, Config.DestinationPath, Config.bOverwrite);
 }
 
 } // namespace
 
-bool TResourceIOTraits<UResource>::ImportSource(
-	FResourceImportConfig& Config,
-	FResourceBulkData& Bulk,
-	UResource& Resource)
-{
-	(void)Config;
-	(void)Resource;
-	return !Bulk.SourcePath.empty() || !Bulk.Bytes.empty();
-}
+// ── TResourceIOTraits<FTexture2D> ──────────────────────────────
 
-bool TResourceIOTraits<UResource>::ExportSource(
-	FResourceExportConfig& Config,
-	const UResource& Resource)
-{
-	return CopyFileToDestination(Resource.GetSourcePath(), Config.DestinationPath, Config.bOverwrite);
-}
-
-bool TResourceIOTraits<UTexture2D>::MatchesSourcePath(const std::string& SourcePath)
+bool TResourceIOTraits<FTexture2D>::MatchesSourcePath(const std::string& SourcePath)
 {
 	const std::string Ext = TextureImageCodec::GetExtensionLower(SourcePath);
-	if (TextureImageCodec::PathLooksLikeCube(SourcePath)
-		|| TextureImageCodec::PathLooksLikeCubeArray(SourcePath)
-		|| TextureImageCodec::PathLooksLikeTexture3D(SourcePath)
-		|| TextureImageCodec::PathLooksLikeTexture2DArray(SourcePath))
-	{
-		return false;
-	}
-	return TextureImageCodec::IsRasterExtension(Ext) || TextureImageCodec::IsKtx2Extension(Ext);
+	return TextureImageCodec::IsRasterExtension(Ext)
+		|| TextureImageCodec::IsKtx2Extension(Ext);
 }
 
-bool TResourceIOTraits<UTexture2D>::ImportSource(
+bool TResourceIOTraits<FTexture2D>::ImportSource(
 	FResourceImportConfig& Config,
 	FResourceBulkData& Bulk,
-	UTexture2D& Resource)
+	FTexture2D& Resource,
+	FResourceSystem* Manager)
 {
+	(void)Manager;
 	return ImportTextureCpu(Config, Bulk, Resource);
 }
 
-bool TResourceIOTraits<UTexture2D>::ExportSource(
+bool TResourceIOTraits<FTexture2D>::ExportSource(
 	FResourceExportConfig& Config,
-	const UTexture2D& Resource)
+	const FTexture2D& Resource)
 {
 	return ExportTextureCpu(Config, Resource);
 }
 
-bool TResourceIOTraits<UTexture3D>::MatchesSourcePath(const std::string& SourcePath)
+// ── TResourceIOTraits<FTexture3D> ──────────────────────────────
+
+bool TResourceIOTraits<FTexture3D>::MatchesSourcePath(const std::string& SourcePath)
 {
 	return TextureImageCodec::PathLooksLikeTexture3D(SourcePath);
 }
 
-bool TResourceIOTraits<UTexture3D>::ImportSource(
+bool TResourceIOTraits<FTexture3D>::ImportSource(
 	FResourceImportConfig& Config,
 	FResourceBulkData& Bulk,
-	UTexture3D& Resource)
+	FTexture3D& Resource,
+	FResourceSystem* Manager)
 {
+	(void)Manager;
 	return ImportTextureCpu(Config, Bulk, Resource);
 }
 
-bool TResourceIOTraits<UTexture3D>::ExportSource(
+bool TResourceIOTraits<FTexture3D>::ExportSource(
 	FResourceExportConfig& Config,
-	const UTexture3D& Resource)
+	const FTexture3D& Resource)
 {
 	return ExportTextureCpu(Config, Resource);
 }
 
-bool TResourceIOTraits<UTextureCube>::MatchesSourcePath(const std::string& SourcePath)
+// ── TResourceIOTraits<FTextureCube> ────────────────────────────
+
+bool TResourceIOTraits<FTextureCube>::MatchesSourcePath(const std::string& SourcePath)
 {
 	return TextureImageCodec::PathLooksLikeCube(SourcePath);
 }
 
-bool TResourceIOTraits<UTextureCube>::ImportSource(
+bool TResourceIOTraits<FTextureCube>::ImportSource(
 	FResourceImportConfig& Config,
 	FResourceBulkData& Bulk,
-	UTextureCube& Resource)
+	FTextureCube& Resource,
+	FResourceSystem* Manager)
 {
+	(void)Manager;
 	return ImportTextureCpu(Config, Bulk, Resource);
 }
 
-bool TResourceIOTraits<UTextureCube>::ExportSource(
+bool TResourceIOTraits<FTextureCube>::ExportSource(
 	FResourceExportConfig& Config,
-	const UTextureCube& Resource)
+	const FTextureCube& Resource)
 {
 	return ExportTextureCpu(Config, Resource);
 }
 
-bool TResourceIOTraits<UTextureCubeArray>::MatchesSourcePath(const std::string& SourcePath)
+// ── TResourceIOTraits<FTextureCubeArray> ───────────────────────
+
+bool TResourceIOTraits<FTextureCubeArray>::MatchesSourcePath(const std::string& SourcePath)
 {
 	return TextureImageCodec::PathLooksLikeCubeArray(SourcePath);
 }
 
-bool TResourceIOTraits<UTextureCubeArray>::ImportSource(
+bool TResourceIOTraits<FTextureCubeArray>::ImportSource(
 	FResourceImportConfig& Config,
 	FResourceBulkData& Bulk,
-	UTextureCubeArray& Resource)
+	FTextureCubeArray& Resource,
+	FResourceSystem* Manager)
 {
+	(void)Manager;
 	return ImportTextureCpu(Config, Bulk, Resource);
 }
 
-bool TResourceIOTraits<UTextureCubeArray>::ExportSource(
+bool TResourceIOTraits<FTextureCubeArray>::ExportSource(
 	FResourceExportConfig& Config,
-	const UTextureCubeArray& Resource)
+	const FTextureCubeArray& Resource)
 {
 	return ExportTextureCpu(Config, Resource);
 }
 
-bool TResourceIOTraits<UTexture2DArray>::MatchesSourcePath(const std::string& SourcePath)
+// ── TResourceIOTraits<FTexture2DArray> ─────────────────────────
+
+bool TResourceIOTraits<FTexture2DArray>::MatchesSourcePath(const std::string& SourcePath)
 {
 	return TextureImageCodec::PathLooksLikeTexture2DArray(SourcePath);
 }
 
-bool TResourceIOTraits<UTexture2DArray>::ImportSource(
+bool TResourceIOTraits<FTexture2DArray>::ImportSource(
 	FResourceImportConfig& Config,
 	FResourceBulkData& Bulk,
-	UTexture2DArray& Resource)
+	FTexture2DArray& Resource,
+	FResourceSystem* Manager)
 {
+	(void)Manager;
 	return ImportTextureCpu(Config, Bulk, Resource);
 }
 
-bool TResourceIOTraits<UTexture2DArray>::ExportSource(
+bool TResourceIOTraits<FTexture2DArray>::ExportSource(
 	FResourceExportConfig& Config,
-	const UTexture2DArray& Resource)
+	const FTexture2DArray& Resource)
 {
 	return ExportTextureCpu(Config, Resource);
 }
 
-bool TResourceIOTraits<UPrefab>::MatchesSourcePath(const std::string& SourcePath)
+// ── TResourceIOTraits<FPrefab> ─────────────────────────────────
+
+bool TResourceIOTraits<FPrefab>::MatchesSourcePath(const std::string& SourcePath)
 {
 	return MeshModelCodec::MatchesModelSourcePath(SourcePath);
 }
 
-bool TResourceIOTraits<UPrefab>::ImportSource(
+bool TResourceIOTraits<FPrefab>::ImportSource(
 	FResourceImportConfig& Config,
 	FResourceBulkData& Bulk,
-	UPrefab& Resource)
+	FPrefab& Resource,
+	FResourceSystem* Manager)
 {
-	if (Bulk.Bytes.empty() && Bulk.PreparedKind != EResourceBulkPreparedKind::Model)
-	{
-		MAHO_CORE_ERROR("ResourceIO: empty BulkData for model '{}'", Config.SourcePath);
-		return false;
-	}
-
-	FResourceSystem* Resources = Detail::GetResourceSystem();
-	FGCSystem* GC = Detail::GetGCSystem();
-	UPackage* Package = nullptr;
-	if (GC && !Config.PackagePath.empty())
-	{
-		Package = GC->FindPackage(Config.PackagePath).Cast<UPackage>();
-	}
-	if (!Resources || !GC || !Package)
-	{
-		MAHO_CORE_ERROR(
-			"ResourceIO: Prefab import needs ResourceSystem + GC + Package for '{}'",
-			Config.SourcePath);
-		return false;
-	}
-
 	FDecodedModelScene Scene;
-	const std::unordered_map<std::string, FPreparedTextureImage>* PreparedTextures = nullptr;
-	std::shared_ptr<FPreparedModelImport> PreparedHolder;
-	if (Bulk.PreparedKind == EResourceBulkPreparedKind::Model && Bulk.Prepared)
-	{
-		PreparedHolder = std::static_pointer_cast<FPreparedModelImport>(Bulk.Prepared);
-		Scene = std::move(PreparedHolder->Scene);
-		PreparedTextures = &PreparedHolder->Textures;
-	}
-	else
-	{
-		if (!MeshModelCodec::DecodeFromMemory(
-				Bulk.Bytes.data(),
-				Bulk.Bytes.size(),
-				Config.SourcePath,
-				Scene))
-		{
-			MAHO_CORE_ERROR("ResourceIO: model decode failed for '{}'", Config.SourcePath);
-			return false;
-		}
-	}
-
-	if (!MeshModelCodec::ApplyDecodedModelScene(
-			std::move(Scene),
-			*Resources,
-			*GC,
-			*Package,
-			Resource,
-			PreparedTextures))
-	{
-		MAHO_CORE_ERROR("ResourceIO: model Apply failed for '{}'", Config.SourcePath);
+	if (!MeshModelCodec::DecodeFromMemory(Bulk.Bytes.data(), Bulk.Bytes.size(), Config.SourcePath, Scene))
 		return false;
-	}
-	return true;
+
+	if (!Manager)
+		return false;
+
+	return MeshModelCodec::ApplyDecodedModelScene(
+		std::move(Scene),
+		*Manager,
+		Config.PackagePath,
+		Resource,
+		nullptr);
 }
 
-bool TResourceIOTraits<UPrefab>::ExportSource(
+bool TResourceIOTraits<FPrefab>::ExportSource(
 	FResourceExportConfig& Config,
-	const UPrefab& Resource)
+	const FPrefab& Resource)
 {
 	(void)Config;
 	(void)Resource;
-	MAHO_CORE_ERROR("ResourceIO: UPrefab model export is not implemented (Phase 1)");
 	return false;
-}
-
-namespace
-{
-
-template <typename TResource>
-[[nodiscard]] bool RejectDirectImport(FResourceImportConfig& Config, TResource&)
-{
-	MAHO_CORE_ERROR(
-		"ResourceIO: '{}' is created by UPrefab scene Apply — not a direct file importer",
-		Config.SourcePath);
-	return false;
-}
-
-template <typename TResource>
-[[nodiscard]] bool RejectDirectExport(FResourceExportConfig&, const TResource&)
-{
-	MAHO_CORE_ERROR("ResourceIO: direct export not implemented for this type (Phase 1)");
-	return false;
-}
-
-} // namespace
-
-bool TResourceIOTraits<UMaterial>::MatchesSourcePath(const std::string& SourcePath)
-{
-	(void)SourcePath;
-	return false;
-}
-
-bool TResourceIOTraits<UMaterial>::ImportSource(
-	FResourceImportConfig& Config,
-	FResourceBulkData& Bulk,
-	UMaterial& Resource)
-{
-	(void)Bulk;
-	return RejectDirectImport(Config, Resource);
-}
-
-bool TResourceIOTraits<UMaterial>::ExportSource(
-	FResourceExportConfig& Config,
-	const UMaterial& Resource)
-{
-	return RejectDirectExport(Config, Resource);
-}
-
-bool TResourceIOTraits<UStaticMesh>::MatchesSourcePath(const std::string& SourcePath)
-{
-	(void)SourcePath;
-	return false;
-}
-
-bool TResourceIOTraits<UStaticMesh>::ImportSource(
-	FResourceImportConfig& Config,
-	FResourceBulkData& Bulk,
-	UStaticMesh& Resource)
-{
-	(void)Bulk;
-	return RejectDirectImport(Config, Resource);
-}
-
-bool TResourceIOTraits<UStaticMesh>::ExportSource(
-	FResourceExportConfig& Config,
-	const UStaticMesh& Resource)
-{
-	return RejectDirectExport(Config, Resource);
-}
-
-bool TResourceIOTraits<USkeleton>::MatchesSourcePath(const std::string& SourcePath)
-{
-	(void)SourcePath;
-	return false;
-}
-
-bool TResourceIOTraits<USkeleton>::ImportSource(
-	FResourceImportConfig& Config,
-	FResourceBulkData& Bulk,
-	USkeleton& Resource)
-{
-	(void)Bulk;
-	return RejectDirectImport(Config, Resource);
-}
-
-bool TResourceIOTraits<USkeleton>::ExportSource(
-	FResourceExportConfig& Config,
-	const USkeleton& Resource)
-{
-	return RejectDirectExport(Config, Resource);
-}
-
-bool TResourceIOTraits<UAnimation>::MatchesSourcePath(const std::string& SourcePath)
-{
-	(void)SourcePath;
-	return false;
-}
-
-bool TResourceIOTraits<UAnimation>::ImportSource(
-	FResourceImportConfig& Config,
-	FResourceBulkData& Bulk,
-	UAnimation& Resource)
-{
-	(void)Bulk;
-	return RejectDirectImport(Config, Resource);
-}
-
-bool TResourceIOTraits<UAnimation>::ExportSource(
-	FResourceExportConfig& Config,
-	const UAnimation& Resource)
-{
-	return RejectDirectExport(Config, Resource);
-}
-
-bool TResourceIOTraits<UAnimationGraph>::MatchesSourcePath(const std::string& SourcePath)
-{
-	(void)SourcePath;
-	return false;
-}
-
-bool TResourceIOTraits<UAnimationGraph>::ImportSource(
-	FResourceImportConfig& Config,
-	FResourceBulkData& Bulk,
-	UAnimationGraph& Resource)
-{
-	(void)Bulk;
-	return RejectDirectImport(Config, Resource);
-}
-
-bool TResourceIOTraits<UAnimationGraph>::ExportSource(
-	FResourceExportConfig& Config,
-	const UAnimationGraph& Resource)
-{
-	return RejectDirectExport(Config, Resource);
 }
 
 } // namespace Maho

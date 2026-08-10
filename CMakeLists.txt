@@ -97,10 +97,6 @@ maho_set_output_dirs(Hiyajo-Project)
 maho_source_group_mirrors("${GAME_SOURCE_DIR}" ${GAME_SOURCES})
 # Generated codegen files: compiled but not shown in VS source tree.
 target_sources(Hiyajo-Project PRIVATE "${GAME_GENERATED_DIR}/Hiyajo-ProjectApp.cpp"
-	"${GAME_GENERATED_DIR}/ObjectReflectTypes.gen.cpp"
-	"${GAME_GENERATED_DIR}/ObjectReflectTypes.gen.h"
-	"${GAME_GENERATED_DIR}/ResourceTypes.gen.cpp"
-	"${GAME_GENERATED_DIR}/ResourceTypes.gen.h"
 	"${GAME_GENERATED_DIR}/LuaReflectBindings.gen.cpp"
 	"${GAME_GENERATED_DIR}/LuaReflectBindings.gen.h")
 maho_add_lua_scripts(Hiyajo-Project "${GAME_SCRIPTS_DIR}")

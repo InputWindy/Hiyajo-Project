@@ -1,5 +1,4 @@
 ﻿#include "Game/System/Resource/ResourceSystem.h"
-#include "Game/Object/SoftObjectPath.h"
 #include "ResourceSnapshotConverters.h"
 #include <Core/Server/TransferHandle.h>
 #include <Render/RenderServer.h>
@@ -13,9 +12,9 @@ namespace Maho
 // ---------------------------------------------------------------------------
 
 template <>
-struct TRenderResourceExporter<UTexture>
+struct TRenderResourceExporter<FTexture>
 {
-	static FTransferHandle Submit(FRenderServer& Server, const UTexture& Texture)
+	static FTransferHandle Submit(FRenderServer& Server, const FTexture& Texture)
 	{
 		FTextureCpuSnapshot Snap;
 		if (!TryBuildTextureCpuSnapshot(Texture, Snap))
@@ -27,83 +26,83 @@ struct TRenderResourceExporter<UTexture>
 		return Handle;
 	}
 
-	static FTransferHandle SubmitDestroy(FRenderServer& Server, const UTexture& Texture)
+	static FTransferHandle SubmitDestroy(FRenderServer& Server, const FTexture& Texture)
 	{
 		FTransferHandle Handle = AllocateTransferHandle(ETransferState::InProgress);
-		Server.PushPendingTextureDestroy(FResourceSystem::MakeResourceCatalogKey(Texture), Handle);
+		Server.PushPendingTextureDestroy(Texture.GetSourcePath(), Handle);
 		return Handle;
 	}
 };
 
 template <>
-struct TRenderResourceExporter<UTexture2D>
+struct TRenderResourceExporter<FTexture2D>
 {
-	static FTransferHandle Submit(FRenderServer& Server, const UTexture2D& Texture)
+	static FTransferHandle Submit(FRenderServer& Server, const FTexture2D& Texture)
 	{
-		return TRenderResourceExporter<UTexture>::Submit(Server, Texture);
+		return TRenderResourceExporter<FTexture>::Submit(Server, Texture);
 	}
-	static FTransferHandle SubmitDestroy(FRenderServer& Server, const UTexture2D& Texture)
+	static FTransferHandle SubmitDestroy(FRenderServer& Server, const FTexture2D& Texture)
 	{
-		return TRenderResourceExporter<UTexture>::SubmitDestroy(Server, Texture);
+		return TRenderResourceExporter<FTexture>::SubmitDestroy(Server, Texture);
 	}
 };
 
 template <>
-struct TRenderResourceExporter<UTexture3D>
+struct TRenderResourceExporter<FTexture3D>
 {
-	static FTransferHandle Submit(FRenderServer& Server, const UTexture3D& Texture)
+	static FTransferHandle Submit(FRenderServer& Server, const FTexture3D& Texture)
 	{
-		return TRenderResourceExporter<UTexture>::Submit(Server, Texture);
+		return TRenderResourceExporter<FTexture>::Submit(Server, Texture);
 	}
-	static FTransferHandle SubmitDestroy(FRenderServer& Server, const UTexture3D& Texture)
+	static FTransferHandle SubmitDestroy(FRenderServer& Server, const FTexture3D& Texture)
 	{
-		return TRenderResourceExporter<UTexture>::SubmitDestroy(Server, Texture);
+		return TRenderResourceExporter<FTexture>::SubmitDestroy(Server, Texture);
 	}
 };
 
 template <>
-struct TRenderResourceExporter<UTextureCube>
+struct TRenderResourceExporter<FTextureCube>
 {
-	static FTransferHandle Submit(FRenderServer& Server, const UTextureCube& Texture)
+	static FTransferHandle Submit(FRenderServer& Server, const FTextureCube& Texture)
 	{
-		return TRenderResourceExporter<UTexture>::Submit(Server, Texture);
+		return TRenderResourceExporter<FTexture>::Submit(Server, Texture);
 	}
-	static FTransferHandle SubmitDestroy(FRenderServer& Server, const UTextureCube& Texture)
+	static FTransferHandle SubmitDestroy(FRenderServer& Server, const FTextureCube& Texture)
 	{
-		return TRenderResourceExporter<UTexture>::SubmitDestroy(Server, Texture);
+		return TRenderResourceExporter<FTexture>::SubmitDestroy(Server, Texture);
 	}
 };
 
 template <>
-struct TRenderResourceExporter<UTextureCubeArray>
+struct TRenderResourceExporter<FTextureCubeArray>
 {
-	static FTransferHandle Submit(FRenderServer& Server, const UTextureCubeArray& Texture)
+	static FTransferHandle Submit(FRenderServer& Server, const FTextureCubeArray& Texture)
 	{
-		return TRenderResourceExporter<UTexture>::Submit(Server, Texture);
+		return TRenderResourceExporter<FTexture>::Submit(Server, Texture);
 	}
-	static FTransferHandle SubmitDestroy(FRenderServer& Server, const UTextureCubeArray& Texture)
+	static FTransferHandle SubmitDestroy(FRenderServer& Server, const FTextureCubeArray& Texture)
 	{
-		return TRenderResourceExporter<UTexture>::SubmitDestroy(Server, Texture);
+		return TRenderResourceExporter<FTexture>::SubmitDestroy(Server, Texture);
 	}
 };
 
 template <>
-struct TRenderResourceExporter<UTexture2DArray>
+struct TRenderResourceExporter<FTexture2DArray>
 {
-	static FTransferHandle Submit(FRenderServer& Server, const UTexture2DArray& Texture)
+	static FTransferHandle Submit(FRenderServer& Server, const FTexture2DArray& Texture)
 	{
-		return TRenderResourceExporter<UTexture>::Submit(Server, Texture);
+		return TRenderResourceExporter<FTexture>::Submit(Server, Texture);
 	}
-	static FTransferHandle SubmitDestroy(FRenderServer& Server, const UTexture2DArray& Texture)
+	static FTransferHandle SubmitDestroy(FRenderServer& Server, const FTexture2DArray& Texture)
 	{
-		return TRenderResourceExporter<UTexture>::SubmitDestroy(Server, Texture);
+		return TRenderResourceExporter<FTexture>::SubmitDestroy(Server, Texture);
 	}
 };
 
 template <>
-struct TRenderResourceExporter<UStaticMesh>
+struct TRenderResourceExporter<FStaticMesh>
 {
-	static FTransferHandle Submit(FRenderServer& Server, const UStaticMesh& Mesh)
+	static FTransferHandle Submit(FRenderServer& Server, const FStaticMesh& Mesh)
 	{
 		FMeshCpuSnapshot Snap;
 		if (!TryBuildMeshCpuSnapshot(Mesh, Snap))
@@ -115,18 +114,18 @@ struct TRenderResourceExporter<UStaticMesh>
 		return Handle;
 	}
 
-	static FTransferHandle SubmitDestroy(FRenderServer& Server, const UStaticMesh& Mesh)
+	static FTransferHandle SubmitDestroy(FRenderServer& Server, const FStaticMesh& Mesh)
 	{
 		FTransferHandle Handle = AllocateTransferHandle(ETransferState::InProgress);
-		Server.PushPendingMeshDestroy(FResourceSystem::MakeResourceCatalogKey(Mesh), Handle);
+		Server.PushPendingMeshDestroy(Mesh.GetSourcePath(), Handle);
 		return Handle;
 	}
 };
 
 template <>
-struct TRenderResourceExporter<USkeleton>
+struct TRenderResourceExporter<FSkeleton>
 {
-	static FTransferHandle Submit(FRenderServer& Server, const USkeleton& Skeleton)
+	static FTransferHandle Submit(FRenderServer& Server, const FSkeleton& Skeleton)
 	{
 		FSkeletonCpuSnapshot Snap;
 		if (!TryBuildSkeletonCpuSnapshot(Skeleton, Snap))
@@ -138,18 +137,18 @@ struct TRenderResourceExporter<USkeleton>
 		return Handle;
 	}
 
-	static FTransferHandle SubmitDestroy(FRenderServer& Server, const USkeleton& Skeleton)
+	static FTransferHandle SubmitDestroy(FRenderServer& Server, const FSkeleton& Skeleton)
 	{
 		FTransferHandle Handle = AllocateTransferHandle(ETransferState::InProgress);
-		Server.PushPendingSkeletonDestroy(FResourceSystem::MakeResourceCatalogKey(Skeleton), Handle);
+		Server.PushPendingSkeletonDestroy(Skeleton.GetSourcePath(), Handle);
 		return Handle;
 	}
 };
 
 template <>
-struct TRenderResourceExporter<UAnimation>
+struct TRenderResourceExporter<FAnimation>
 {
-	static FTransferHandle Submit(FRenderServer& Server, const UAnimation& Animation)
+	static FTransferHandle Submit(FRenderServer& Server, const FAnimation& Animation)
 	{
 		FAnimationCpuSnapshot Snap;
 		if (!TryBuildAnimationCpuSnapshot(Animation, Snap))
@@ -161,10 +160,10 @@ struct TRenderResourceExporter<UAnimation>
 		return Handle;
 	}
 
-	static FTransferHandle SubmitDestroy(FRenderServer& Server, const UAnimation& Animation)
+	static FTransferHandle SubmitDestroy(FRenderServer& Server, const FAnimation& Animation)
 	{
 		FTransferHandle Handle = AllocateTransferHandle(ETransferState::InProgress);
-		Server.PushPendingAnimationDestroy(FResourceSystem::MakeResourceCatalogKey(Animation), Handle);
+		Server.PushPendingAnimationDestroy(Animation.GetSourcePath(), Handle);
 		return Handle;
 	}
 };
@@ -172,38 +171,38 @@ struct TRenderResourceExporter<UAnimation>
 template <typename TResource>
 FTransferHandle FRenderServer::QueueResourceUpload(const TResource& Resource)
 {
-	static_assert(std::is_base_of_v<UResource, TResource>,
-		"QueueResourceUpload requires TResource : UResource");
+	static_assert(std::is_base_of_v<FResource, TResource>,
+		"QueueResourceUpload requires TResource : FResource");
 	return TRenderResourceExporter<TResource>::Submit(*this, Resource);
 }
 
 template <typename TResource>
 FTransferHandle FRenderServer::RequestResourceDestroy(const TResource& Resource)
 {
-	static_assert(std::is_base_of_v<UResource, TResource>,
-		"RequestResourceDestroy requires TResource : UResource");
+	static_assert(std::is_base_of_v<FResource, TResource>,
+		"RequestResourceDestroy requires TResource : FResource");
 	return TRenderResourceExporter<TResource>::SubmitDestroy(*this, Resource);
 }
 
-template FTransferHandle FRenderServer::QueueResourceUpload<UTexture>(const UTexture&);
-template FTransferHandle FRenderServer::QueueResourceUpload<UTexture2D>(const UTexture2D&);
-template FTransferHandle FRenderServer::QueueResourceUpload<UTexture3D>(const UTexture3D&);
-template FTransferHandle FRenderServer::QueueResourceUpload<UTextureCube>(const UTextureCube&);
-template FTransferHandle FRenderServer::QueueResourceUpload<UTextureCubeArray>(const UTextureCubeArray&);
-template FTransferHandle FRenderServer::QueueResourceUpload<UTexture2DArray>(const UTexture2DArray&);
-template FTransferHandle FRenderServer::QueueResourceUpload<UStaticMesh>(const UStaticMesh&);
-template FTransferHandle FRenderServer::QueueResourceUpload<USkeleton>(const USkeleton&);
-template FTransferHandle FRenderServer::QueueResourceUpload<UAnimation>(const UAnimation&);
+template FTransferHandle FRenderServer::QueueResourceUpload<FTexture>(const FTexture&);
+template FTransferHandle FRenderServer::QueueResourceUpload<FTexture2D>(const FTexture2D&);
+template FTransferHandle FRenderServer::QueueResourceUpload<FTexture3D>(const FTexture3D&);
+template FTransferHandle FRenderServer::QueueResourceUpload<FTextureCube>(const FTextureCube&);
+template FTransferHandle FRenderServer::QueueResourceUpload<FTextureCubeArray>(const FTextureCubeArray&);
+template FTransferHandle FRenderServer::QueueResourceUpload<FTexture2DArray>(const FTexture2DArray&);
+template FTransferHandle FRenderServer::QueueResourceUpload<FStaticMesh>(const FStaticMesh&);
+template FTransferHandle FRenderServer::QueueResourceUpload<FSkeleton>(const FSkeleton&);
+template FTransferHandle FRenderServer::QueueResourceUpload<FAnimation>(const FAnimation&);
 
-template FTransferHandle FRenderServer::RequestResourceDestroy<UTexture>(const UTexture&);
-template FTransferHandle FRenderServer::RequestResourceDestroy<UTexture2D>(const UTexture2D&);
-template FTransferHandle FRenderServer::RequestResourceDestroy<UTexture3D>(const UTexture3D&);
-template FTransferHandle FRenderServer::RequestResourceDestroy<UTextureCube>(const UTextureCube&);
-template FTransferHandle FRenderServer::RequestResourceDestroy<UTextureCubeArray>(const UTextureCubeArray&);
-template FTransferHandle FRenderServer::RequestResourceDestroy<UTexture2DArray>(const UTexture2DArray&);
-template FTransferHandle FRenderServer::RequestResourceDestroy<UStaticMesh>(const UStaticMesh&);
-template FTransferHandle FRenderServer::RequestResourceDestroy<USkeleton>(const USkeleton&);
-template FTransferHandle FRenderServer::RequestResourceDestroy<UAnimation>(const UAnimation&);
+template FTransferHandle FRenderServer::RequestResourceDestroy<FTexture>(const FTexture&);
+template FTransferHandle FRenderServer::RequestResourceDestroy<FTexture2D>(const FTexture2D&);
+template FTransferHandle FRenderServer::RequestResourceDestroy<FTexture3D>(const FTexture3D&);
+template FTransferHandle FRenderServer::RequestResourceDestroy<FTextureCube>(const FTextureCube&);
+template FTransferHandle FRenderServer::RequestResourceDestroy<FTextureCubeArray>(const FTextureCubeArray&);
+template FTransferHandle FRenderServer::RequestResourceDestroy<FTexture2DArray>(const FTexture2DArray&);
+template FTransferHandle FRenderServer::RequestResourceDestroy<FStaticMesh>(const FStaticMesh&);
+template FTransferHandle FRenderServer::RequestResourceDestroy<FSkeleton>(const FSkeleton&);
+template FTransferHandle FRenderServer::RequestResourceDestroy<FAnimation>(const FAnimation&);
 
 // ---------------------------------------------------------------------------
 // FRenderServer

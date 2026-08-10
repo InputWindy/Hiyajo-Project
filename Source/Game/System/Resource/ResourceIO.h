@@ -2,15 +2,12 @@
 
 /**
  * Explicit Importer / Exporter types for FResourceSystem::Import / Export.
- * Callers pass TResourceImporter<T> / TResourceExporter<T> / FCassetPackageImporter as templates.
- * No global RegisterImporter table — Manager stores only the instance for an in-flight SoftPath.
+ * DOTS-aligned: no UObject, no FObjectRef, no FSoftObjectPath, no GC.
  */
 
 #include "Game/System/Resource/ResourceSystem.h"
 
 #include <Core/System/Log.h>
-#include "Game/System/GC/GCSystem.h"
-#include "Game/Object/Package.h"
 #include <Core/System/Paths.h>
 
 #include <type_traits>
@@ -24,13 +21,9 @@ class IResourceImporter
 public:
 	virtual ~IResourceImporter() = default;
 
-	[[nodiscard]] virtual EResourceType GetType() const = 0;
+	[[nodiscard]] virtual EAssetType GetType() const = 0;
 	[[nodiscard]] virtual bool MatchesSourcePath(const std::string& SourcePath) const = 0;
 
-	/**
-	 * Game-thread Apply after BulkData Succeeded.
-	 * Creates GC objects as needed; returns false on failure.
-	 */
 	[[nodiscard]] virtual bool ApplyBulkData(
 		FResourceSystem& Manager,
 		FResourceImportConfig& Config,
@@ -42,22 +35,17 @@ class IResourceExporter
 public:
 	virtual ~IResourceExporter() = default;
 
-	[[nodiscard]] virtual EResourceType GetType() const = 0;
-	[[nodiscard]] virtual bool CanExport(const FObjectRef& Resource) const = 0;
-	[[nodiscard]] virtual bool Export(FResourceExportConfig Config, const FObjectRef& Resource) = 0;
+	[[nodiscard]] virtual EAssetType GetType() const = 0;
+	[[nodiscard]] virtual bool CanExport(const FResource& Resource) const = 0;
+	[[nodiscard]] virtual bool Export(FResourceExportConfig Config, const FResource& Resource) = 0;
 };
 
-/** .casset package hydrate (MCAS binary BulkData → LoadPackageFromBinary). */
+/** .casset package hydrate (MCAS binary BulkData -> LoadPackageFromBinary). */
 class FCassetPackageImporter final : public IResourceImporter
 {
 public:
-	[[nodiscard]] EResourceType GetType() const override
-	{
-		return EResourceType::Data;
-	}
-
+	[[nodiscard]] EAssetType GetType() const override { return EAssetType::Data; }
 	[[nodiscard]] bool MatchesSourcePath(const std::string& SourcePath) const override;
-
 	[[nodiscard]] bool ApplyBulkData(
 		FResourceSystem& Manager,
 		FResourceImportConfig& Config,
@@ -74,15 +62,11 @@ template <typename TResource>
 class TResourceImporter final : public IResourceImporter
 {
 public:
-	static_assert(std::is_base_of_v<UResource, TResource>, "TResource must derive from UResource");
+	static_assert(std::is_base_of_v<FResource, TResource>, "TResource must derive from FResource");
 
 	using FTraits = TResourceIOTraits<TResource>;
 
-	[[nodiscard]] EResourceType GetType() const override
-	{
-		return FTraits::GetType();
-	}
-
+	[[nodiscard]] EAssetType GetType() const override { return FTraits::GetType(); }
 	[[nodiscard]] bool MatchesSourcePath(const std::string& SourcePath) const override
 	{
 		return FTraits::MatchesSourcePath(SourcePath);
@@ -93,10 +77,8 @@ public:
 		FResourceImportConfig& Config,
 		FResourceBulkData& Bulk) override
 	{
-		if (Config.TypeHint == EResourceType::Unknown)
-		{
+		if (Config.TypeHint == EAssetType::Unknown)
 			Config.TypeHint = FTraits::GetType();
-		}
 		return Manager.ApplyTypedBulkData<TResource>(Config, Bulk);
 	}
 };
@@ -105,226 +87,97 @@ template <typename TResource>
 class TResourceExporter final : public IResourceExporter
 {
 public:
-	static_assert(std::is_base_of_v<UResource, TResource>, "TResource must derive from UResource");
+	static_assert(std::is_base_of_v<FResource, TResource>, "TResource must derive from FResource");
 
 	using FTraits = TResourceIOTraits<TResource>;
 
-	[[nodiscard]] EResourceType GetType() const override
+	[[nodiscard]] EAssetType GetType() const override { return FTraits::GetType(); }
+	[[nodiscard]] bool CanExport(const FResource& Resource) const override
 	{
-		return FTraits::GetType();
+		return dynamic_cast<const TResource*>(&Resource) != nullptr;
 	}
 
-	[[nodiscard]] bool CanExport(const FObjectRef& Resource) const override
+	[[nodiscard]] bool Export(FResourceExportConfig Config, const FResource& Resource) override
 	{
-		return Resource.Cast<TResource>() != nullptr;
-	}
-
-	[[nodiscard]] bool Export(FResourceExportConfig Config, const FObjectRef& Resource) override
-	{
-		TResource* Typed = Resource.Cast<TResource>();
+		const TResource* Typed = dynamic_cast<const TResource*>(&Resource);
 		if (!Typed)
 		{
-			MAHO_CORE_ERROR("TResourceExporter: Ref is not the expected resource type");
+			MAHO_CORE_ERROR("TResourceExporter: Resource is not the expected type");
 			return false;
 		}
-
 		if (Config.DestinationPath.empty())
 		{
 			MAHO_CORE_ERROR("TResourceExporter: empty DestinationPath");
 			return false;
 		}
-
 		return FTraits::ExportSource(Config, *Typed);
 	}
 };
 
+// ── IO Traits specializations ──────────────────────────────────
+
 template <>
-struct TResourceIOTraits<UResource>
+struct TResourceIOTraits<FTexture2D>
 {
-	static constexpr EResourceType GetType()
-	{
-		return EResourceType::Raw;
-	}
-
-	/** Names accepted by ResourceTypeFromString / package class field. */
-	static constexpr const char* TypeNames[] = {
-		"Raw",
-		"Resource",
-		"Object",
-		"UResource",
-	};
-
-	[[nodiscard]] static bool MatchesSourcePath(const std::string& SourcePath)
-	{
-		(void)SourcePath;
-		return true;
-	}
-
-	[[nodiscard]] static bool ImportSource(
-		FResourceImportConfig& Config,
-		FResourceBulkData& Bulk,
-		UResource& Resource);
-
-	[[nodiscard]] static bool ExportSource(FResourceExportConfig& Config, const UResource& Resource);
+	static constexpr EAssetType GetType() { return EAssetType::Texture2D; }
+	static constexpr const char* TypeNames[] = { "Texture2D", "Texture", "FTexture2D", "FTexture" };
+	[[nodiscard]] static bool MatchesSourcePath(const std::string& SourcePath);
+	[[nodiscard]] static bool ImportSource(FResourceImportConfig& Config, FResourceBulkData& Bulk, FTexture2D& Resource, FResourceSystem* Manager = nullptr);
+	[[nodiscard]] static bool ExportSource(FResourceExportConfig& Config, const FTexture2D& Resource);
 };
 
 template <>
-struct TResourceIOTraits<UTexture2D>
+struct TResourceIOTraits<FTexture3D>
 {
-	static constexpr EResourceType GetType() { return EResourceType::Texture2D; }
-	static constexpr const char* TypeNames[] = {
-		"Texture2D",
-		"Texture",
-		"UTexture2D",
-		"UTexture",
-		"TextureResource",
-		"UTextureResource",
-	};
+	static constexpr EAssetType GetType() { return EAssetType::Texture3D; }
+	static constexpr const char* TypeNames[] = { "Texture3D", "FTexture3D" };
 	[[nodiscard]] static bool MatchesSourcePath(const std::string& SourcePath);
-	[[nodiscard]] static bool ImportSource(
-		FResourceImportConfig& Config,
-		FResourceBulkData& Bulk,
-		UTexture2D& Resource);
-	[[nodiscard]] static bool ExportSource(FResourceExportConfig& Config, const UTexture2D& Resource);
+	[[nodiscard]] static bool ImportSource(FResourceImportConfig& Config, FResourceBulkData& Bulk, FTexture3D& Resource, FResourceSystem* Manager = nullptr);
+	[[nodiscard]] static bool ExportSource(FResourceExportConfig& Config, const FTexture3D& Resource);
 };
 
 template <>
-struct TResourceIOTraits<UTexture3D>
+struct TResourceIOTraits<FTextureCube>
 {
-	static constexpr EResourceType GetType() { return EResourceType::Texture3D; }
-	static constexpr const char* TypeNames[] = { "Texture3D", "UTexture3D" };
+	static constexpr EAssetType GetType() { return EAssetType::TextureCube; }
+	static constexpr const char* TypeNames[] = { "TextureCube", "FTextureCube", "Cubemap" };
 	[[nodiscard]] static bool MatchesSourcePath(const std::string& SourcePath);
-	[[nodiscard]] static bool ImportSource(
-		FResourceImportConfig& Config,
-		FResourceBulkData& Bulk,
-		UTexture3D& Resource);
-	[[nodiscard]] static bool ExportSource(FResourceExportConfig& Config, const UTexture3D& Resource);
+	[[nodiscard]] static bool ImportSource(FResourceImportConfig& Config, FResourceBulkData& Bulk, FTextureCube& Resource, FResourceSystem* Manager = nullptr);
+	[[nodiscard]] static bool ExportSource(FResourceExportConfig& Config, const FTextureCube& Resource);
 };
 
 template <>
-struct TResourceIOTraits<UTextureCube>
+struct TResourceIOTraits<FTextureCubeArray>
 {
-	static constexpr EResourceType GetType() { return EResourceType::TextureCube; }
-	static constexpr const char* TypeNames[] = { "TextureCube", "UTextureCube", "Cubemap" };
+	static constexpr EAssetType GetType() { return EAssetType::TextureCubeArray; }
+	static constexpr const char* TypeNames[] = { "TextureCubeArray", "FTextureCubeArray" };
 	[[nodiscard]] static bool MatchesSourcePath(const std::string& SourcePath);
-	[[nodiscard]] static bool ImportSource(
-		FResourceImportConfig& Config,
-		FResourceBulkData& Bulk,
-		UTextureCube& Resource);
-	[[nodiscard]] static bool ExportSource(FResourceExportConfig& Config, const UTextureCube& Resource);
+	[[nodiscard]] static bool ImportSource(FResourceImportConfig& Config, FResourceBulkData& Bulk, FTextureCubeArray& Resource, FResourceSystem* Manager = nullptr);
+	[[nodiscard]] static bool ExportSource(FResourceExportConfig& Config, const FTextureCubeArray& Resource);
 };
 
 template <>
-struct TResourceIOTraits<UTextureCubeArray>
+struct TResourceIOTraits<FTexture2DArray>
 {
-	static constexpr EResourceType GetType() { return EResourceType::TextureCubeArray; }
-	static constexpr const char* TypeNames[] = { "TextureCubeArray", "UTextureCubeArray" };
+	static constexpr EAssetType GetType() { return EAssetType::Texture2DArray; }
+	static constexpr const char* TypeNames[] = { "Texture2DArray", "FTexture2DArray" };
 	[[nodiscard]] static bool MatchesSourcePath(const std::string& SourcePath);
-	[[nodiscard]] static bool ImportSource(
-		FResourceImportConfig& Config,
-		FResourceBulkData& Bulk,
-		UTextureCubeArray& Resource);
-	[[nodiscard]] static bool ExportSource(FResourceExportConfig& Config, const UTextureCubeArray& Resource);
+	[[nodiscard]] static bool ImportSource(FResourceImportConfig& Config, FResourceBulkData& Bulk, FTexture2DArray& Resource, FResourceSystem* Manager = nullptr);
+	[[nodiscard]] static bool ExportSource(FResourceExportConfig& Config, const FTexture2DArray& Resource);
 };
 
 template <>
-struct TResourceIOTraits<UTexture2DArray>
+struct TResourceIOTraits<FPrefab>
 {
-	static constexpr EResourceType GetType() { return EResourceType::Texture2DArray; }
-	static constexpr const char* TypeNames[] = { "Texture2DArray", "UTexture2DArray" };
+	static constexpr EAssetType GetType() { return EAssetType::Prefab; }
+	static constexpr const char* TypeNames[] = { "Prefab", "FPrefab", "Model", "MeshScene" };
 	[[nodiscard]] static bool MatchesSourcePath(const std::string& SourcePath);
-	[[nodiscard]] static bool ImportSource(
-		FResourceImportConfig& Config,
-		FResourceBulkData& Bulk,
-		UTexture2DArray& Resource);
-	[[nodiscard]] static bool ExportSource(FResourceExportConfig& Config, const UTexture2DArray& Resource);
-};
-
-/**
- * Model scene import root: fbx/gltf/obj/... → Decode → Apply siblings + Prefab DocumentJson.
- * SoftPaths to Meshes / Skeleton / AnimationGraph live in Prefab JSON (Metadata peer).
- */
-template <>
-struct TResourceIOTraits<UPrefab>
-{
-	static constexpr EResourceType GetType() { return EResourceType::Prefab; }
-	static constexpr const char* TypeNames[] = { "Prefab", "UPrefab", "Model", "MeshScene" };
-	[[nodiscard]] static bool MatchesSourcePath(const std::string& SourcePath);
-	[[nodiscard]] static bool ImportSource(
-		FResourceImportConfig& Config,
-		FResourceBulkData& Bulk,
-		UPrefab& Resource);
-	[[nodiscard]] static bool ExportSource(FResourceExportConfig& Config, const UPrefab& Resource);
-};
-
-/** Sibling CPU types created by Prefab scene Apply (no direct file Match). */
-template <>
-struct TResourceIOTraits<UMaterial>
-{
-	static constexpr EResourceType GetType() { return EResourceType::Material; }
-	static constexpr const char* TypeNames[] = { "Material", "UMaterial" };
-	[[nodiscard]] static bool MatchesSourcePath(const std::string& SourcePath);
-	[[nodiscard]] static bool ImportSource(
-		FResourceImportConfig& Config,
-		FResourceBulkData& Bulk,
-		UMaterial& Resource);
-	[[nodiscard]] static bool ExportSource(FResourceExportConfig& Config, const UMaterial& Resource);
-};
-
-template <>
-struct TResourceIOTraits<UStaticMesh>
-{
-	static constexpr EResourceType GetType() { return EResourceType::Mesh; }
-	static constexpr const char* TypeNames[] = { "Mesh", "StaticMesh", "UStaticMesh" };
-	[[nodiscard]] static bool MatchesSourcePath(const std::string& SourcePath);
-	[[nodiscard]] static bool ImportSource(
-		FResourceImportConfig& Config,
-		FResourceBulkData& Bulk,
-		UStaticMesh& Resource);
-	[[nodiscard]] static bool ExportSource(FResourceExportConfig& Config, const UStaticMesh& Resource);
-};
-
-template <>
-struct TResourceIOTraits<USkeleton>
-{
-	static constexpr EResourceType GetType() { return EResourceType::Skeleton; }
-	static constexpr const char* TypeNames[] = { "Skeleton", "USkeleton" };
-	[[nodiscard]] static bool MatchesSourcePath(const std::string& SourcePath);
-	[[nodiscard]] static bool ImportSource(
-		FResourceImportConfig& Config,
-		FResourceBulkData& Bulk,
-		USkeleton& Resource);
-	[[nodiscard]] static bool ExportSource(FResourceExportConfig& Config, const USkeleton& Resource);
-};
-
-template <>
-struct TResourceIOTraits<UAnimation>
-{
-	static constexpr EResourceType GetType() { return EResourceType::Animation; }
-	static constexpr const char* TypeNames[] = { "Animation", "UAnimation" };
-	[[nodiscard]] static bool MatchesSourcePath(const std::string& SourcePath);
-	[[nodiscard]] static bool ImportSource(
-		FResourceImportConfig& Config,
-		FResourceBulkData& Bulk,
-		UAnimation& Resource);
-	[[nodiscard]] static bool ExportSource(FResourceExportConfig& Config, const UAnimation& Resource);
-};
-
-template <>
-struct TResourceIOTraits<UAnimationGraph>
-{
-	static constexpr EResourceType GetType() { return EResourceType::AnimationGraph; }
-	static constexpr const char* TypeNames[] = { "AnimationGraph", "UAnimationGraph" };
-	[[nodiscard]] static bool MatchesSourcePath(const std::string& SourcePath);
-	[[nodiscard]] static bool ImportSource(
-		FResourceImportConfig& Config,
-		FResourceBulkData& Bulk,
-		UAnimationGraph& Resource);
-	[[nodiscard]] static bool ExportSource(FResourceExportConfig& Config, const UAnimationGraph& Resource);
+	[[nodiscard]] static bool ImportSource(FResourceImportConfig& Config, FResourceBulkData& Bulk, FPrefab& Resource, FResourceSystem* Manager = nullptr);
+	[[nodiscard]] static bool ExportSource(FResourceExportConfig& Config, const FPrefab& Resource);
 };
 
 template <typename TImporter>
-FSoftObjectPath FResourceSystem::Import(FResourceImportConfig Config)
+std::string FResourceSystem::Import(FResourceImportConfig Config)
 {
 	return EnqueueImport(std::make_unique<TImporter>(), std::move(Config));
 }
@@ -334,124 +187,57 @@ bool FResourceSystem::ApplyTypedBulkData(FResourceImportConfig& Config, FResourc
 {
 	using FTraits = TResourceIOTraits<TResource>;
 
-	if (!IsInitialized() || !bAcceptingNewWork)
-	{
-		MAHO_CORE_ERROR("FResourceSystem::ApplyTypedBulkData: not accepting work");
-		return false;
-	}
+	if (!IsInitialized() || !bAcceptingNewWork) return false;
 
 	Config.SourcePath = NormalizeSourcePath(std::move(Config.SourcePath));
 	Config.PackagePath = NormalizePackageName(std::move(Config.PackagePath));
 	if (Config.ObjectName.empty() && !Config.SourcePath.empty())
-	{
 		Config.ObjectName = MakeObjectNameFromSource(Config.SourcePath);
-	}
 
 	if (Config.PackagePath.empty() || Config.ObjectName.empty() || Config.SourcePath.empty())
-	{
-		MAHO_CORE_ERROR("FResourceSystem::ApplyTypedBulkData: PackagePath/ObjectName/SourcePath required");
 		return false;
-	}
 
-	FGCSystem* GC = Detail::GetGCSystem();
-	if (!GC)
-	{
-		MAHO_CORE_ERROR("FResourceSystem::ApplyTypedBulkData: GC unavailable");
-		return false;
-	}
-
-	FObjectRef PackageRef = GC->FindPackage(Config.PackagePath);
-	if (!PackageRef)
-	{
-		PackageRef = GC->NewObject<UPackage>(Config.PackagePath, EPackageFlags::Persistent);
-	}
-	UPackage* PackagePtr = PackageRef.Cast<UPackage>();
-	if (!PackagePtr)
-	{
-		MAHO_CORE_ERROR(
-			"FResourceSystem::ApplyTypedBulkData: failed to create package '{}'",
-			Config.PackagePath);
-		return false;
-	}
-
-	if (PackagePtr->FindObject(Config.ObjectName))
-	{
-		MAHO_CORE_ERROR(
-			"FResourceSystem::ApplyTypedBulkData: '{}' already exists in '{}'",
-			Config.ObjectName,
-			PackagePtr->GetName());
-		return false;
-	}
-
-	EResourceType Type = Config.TypeHint;
-	if (Type == EResourceType::Unknown)
-	{
+	EAssetType Type = Config.TypeHint;
+	if (Type == EAssetType::Unknown)
 		Type = FTraits::GetType();
-	}
 
-	FObjectRef ResourceRef = GC->NewObject<TResource>(
-		PackagePtr,
-		Config.ObjectName,
-		Type,
-		Config.SourcePath);
-	TResource* Resource = ResourceRef.Cast<TResource>();
-	if (!Resource)
+	const std::string Key = MakeAssetCatalogKey(Config.PackagePath, Config.ObjectName);
+	if (Catalog.find(Key) != Catalog.end())
 	{
-		MAHO_CORE_ERROR("FResourceSystem::ApplyTypedBulkData: NewObject failed");
+		MAHO_CORE_ERROR("FResourceSystem::ApplyTypedBulkData: '{}' already exists", Key);
 		return false;
 	}
 
-	Resource->SetLoadState(EResourceLoadState::Pending);
-	if (!RegisterOwnedResource(*PackagePtr, ResourceRef))
-	{
-		Resource->ClearOuter();
-		return false;
-	}
+	auto Resource = std::make_unique<TResource>(Config.ObjectName, Type, Config.SourcePath);
+	TResource* Raw = Resource.get();
+	Catalog[Key] = std::move(Resource);
+	RegisterOwnedResource(Config.PackagePath, Raw);
 
-	const bool bOk = FTraits::ImportSource(Config, Bulk, *Resource);
-	Resource->SetLoadState(bOk ? EResourceLoadState::Ready : EResourceLoadState::Failed);
+	Raw->LoadState = EAssetLoadState::Pending;
+	const bool bOk = FTraits::ImportSource(Config, Bulk, *Raw, this);
+	Raw->LoadState = bOk ? EAssetLoadState::Ready : EAssetLoadState::Failed;
 	if (!bOk)
 	{
-		AbortFailedImport(*Resource);
+		AbortFailedImport(*Raw);
 		return false;
 	}
-	Resource->MarkDirty();
-	if (UPackage* Package = Resource->GetPackage().Cast<UPackage>())
-	{
-		for (const auto& Pair : Package->Objects)
-		{
-			if (UResource* Sibling = dynamic_cast<UResource*>(Pair.second))
-			{
-				Sibling->MarkDirty();
-			}
-		}
-	}
+	Raw->MarkDirty();
 	return true;
 }
 
 template <typename TExporter>
-FSoftObjectPath FResourceSystem::Export(FResourceExportConfig Config, const FSoftObjectPath& Source)
+std::string FResourceSystem::Export(FResourceExportConfig Config, const std::string& SourcePath)
 {
-	if (!IsInitialized() || !bAcceptingNewWork)
-	{
-		MAHO_CORE_ERROR("FResourceSystem::Export: not accepting work");
-		return {};
-	}
+	if (!IsInitialized() || !bAcceptingNewWork) return {};
 
-	FObjectRef Resource = Source.Resolve();
-	if (!Resource)
-	{
-		MAHO_CORE_ERROR("FResourceSystem::Export: SoftPath '{}' not loaded", Source.ToString());
-		return {};
-	}
+	FResource* Resource = FindAsset(SourcePath);
+	if (!Resource) return {};
 
 	TExporter Exporter;
-	if (!Exporter.CanExport(Resource) || !Exporter.Export(std::move(Config), Resource))
-	{
+	if (!Exporter.CanExport(*Resource) || !Exporter.Export(std::move(Config), *Resource))
 		return {};
-	}
 
-	return Source;
+	return SourcePath;
 }
 
 } // namespace Maho

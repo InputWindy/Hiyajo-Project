@@ -3,7 +3,6 @@
 #include "Game/Editor/AgentChatClient.h"
 #include "Game/Editor/EditorUIRegistry.h"
 #include "Game/System/Resource/ResourceSystem.h"
-#include "Game/Object/Object.h"
 #include <ECS/SystemGroup.h>
 #include <ECS/EntityManager.h>
 #include <ECS/EntityHandle.h>
@@ -74,8 +73,8 @@ private:
 		std::string SourcePath;
 		std::string PackagePath;
 		std::string ObjectName;
-		EResourceType TypeHint = EResourceType::Unknown;
-		FSoftObjectPath SoftPath;
+		EAssetType TypeHint = EAssetType::Unknown;
+		std::string SoftPath;
 		bool bKicked = false;
 	};
 
@@ -85,7 +84,7 @@ private:
 		std::string SourcePath;
 		std::string PackagePath;
 		std::string ObjectName;
-		EResourceType TypeHint = EResourceType::Unknown;
+		EAssetType TypeHint = EAssetType::Unknown;
 		char PackagePathEdit[512] = {};
 		char ObjectNameEdit[256] = {};
 	};
@@ -153,7 +152,7 @@ private:
 	[[nodiscard]] bool SaveContentAsset(const std::string& CatalogKey);
 	void OpenResourceBrowser(const std::string& CatalogKey);
 	void DrawOpenResourceBrowsers(FApp& App);
-	void DrawResourceBrowserBody(FResourceBrowserWindow& Window, UResource& Resource, FApp& App);
+	void DrawResourceBrowserBody(FResourceBrowserWindow& Window, FResource& Resource, FApp& App);
 	void ReleaseResourceBrowserPreview(FResourceBrowserWindow& Window, FApp& App);
 
 	void AppendOutput(std::string Line, spdlog::level::level_enum Level = spdlog::level::info);
@@ -204,7 +203,7 @@ private:
 	std::uint32_t EditorUiPresentedFrames = 0;
 	static constexpr std::uint32_t kEditorUiSettleFrames = 2;
 	std::vector<std::string> StartupCassetPaths;
-	std::vector<FSoftObjectPath> StartupCassetSoftPaths;
+	std::vector<std::string> StartupCassetSoftPaths;
 	std::size_t StartupCassetNextIndex = 0;
 	std::size_t StartupCassetLoaded = 0;
 	bool bManualImportActive = false;

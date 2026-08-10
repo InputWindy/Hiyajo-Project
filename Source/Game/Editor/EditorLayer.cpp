@@ -1,16 +1,15 @@
-﻿#include "Game/Editor/EditorLayer.h"
+﻿// FIXME: EditorLayer needs porting to FResource API. Temporarily disabled.
+#if 0
+#include "Game/Editor/EditorLayer.h"
 
 #include <Core/Application/App.h>
 #include <Core/System/ConfigFile.h>
 #include <Core/System/Console.h>
 #include "Game/Editor/AgentChatClient.h"
 #include "Game/Editor/EditorUIRegistry.h"
-#include "Game/System/GC/GCSystem.h"
 #include <Core/Extension/Platform/Platform.h>
 #include <Core/Extension/Render/Render.h>
 #include "Game/System/Resource/ResourceSystem.h"
-#include "Game/Object/Package.h"
-#include "Game/Object/SoftObjectPath.h"
 #include <Core/System/Log.h>
 #include <Core/System/Paths.h>
 #include <Core/System/Utf8Path.h>
@@ -252,27 +251,27 @@ namespace SeqGraphIds
 
 [[nodiscard]] EResourceType InferImportTypeLocal(const std::string& SourcePath)
 {
-	if (TResourceIOTraits<UTexture2D>::MatchesSourcePath(SourcePath))
+	if (TResourceIOTraits<FTexture2D>::MatchesSourcePath(SourcePath))
 	{
 		return EResourceType::Texture2D;
 	}
-	if (TResourceIOTraits<UTexture3D>::MatchesSourcePath(SourcePath))
+	if (TResourceIOTraits<FTexture3D>::MatchesSourcePath(SourcePath))
 	{
 		return EResourceType::Texture3D;
 	}
-	if (TResourceIOTraits<UTextureCube>::MatchesSourcePath(SourcePath))
+	if (TResourceIOTraits<FTextureCube>::MatchesSourcePath(SourcePath))
 	{
 		return EResourceType::TextureCube;
 	}
-	if (TResourceIOTraits<UTextureCubeArray>::MatchesSourcePath(SourcePath))
+	if (TResourceIOTraits<FTextureCubeArray>::MatchesSourcePath(SourcePath))
 	{
 		return EResourceType::TextureCubeArray;
 	}
-	if (TResourceIOTraits<UTexture2DArray>::MatchesSourcePath(SourcePath))
+	if (TResourceIOTraits<FTexture2DArray>::MatchesSourcePath(SourcePath))
 	{
 		return EResourceType::Texture2DArray;
 	}
-	if (TResourceIOTraits<UPrefab>::MatchesSourcePath(SourcePath))
+	if (TResourceIOTraits<FPrefab>::MatchesSourcePath(SourcePath))
 	{
 		return EResourceType::Prefab;
 	}
@@ -284,7 +283,7 @@ namespace SeqGraphIds
 	return InferImportTypeLocal(SourcePath) != EResourceType::Unknown;
 }
 
-[[nodiscard]] FSoftObjectPath EnqueueTypedImport(
+[[nodiscard]] std::string EnqueueTypedImport(
 	FResourceSystem& Resources,
 	FResourceImportConfig Config,
 	EResourceType TypeHint)
@@ -299,17 +298,17 @@ namespace SeqGraphIds
 	{
 	case EResourceType::Texture:
 	case EResourceType::Texture2D:
-		return Resources.Import<TResourceImporter<UTexture2D>>(std::move(Config));
+		return Resources.Import<TResourceImporter<FTexture2D>>(std::move(Config));
 	case EResourceType::Texture3D:
-		return Resources.Import<TResourceImporter<UTexture3D>>(std::move(Config));
+		return Resources.Import<TResourceImporter<FTexture3D>>(std::move(Config));
 	case EResourceType::TextureCube:
-		return Resources.Import<TResourceImporter<UTextureCube>>(std::move(Config));
+		return Resources.Import<TResourceImporter<FTextureCube>>(std::move(Config));
 	case EResourceType::TextureCubeArray:
-		return Resources.Import<TResourceImporter<UTextureCubeArray>>(std::move(Config));
+		return Resources.Import<TResourceImporter<FTextureCubeArray>>(std::move(Config));
 	case EResourceType::Texture2DArray:
-		return Resources.Import<TResourceImporter<UTexture2DArray>>(std::move(Config));
+		return Resources.Import<TResourceImporter<FTexture2DArray>>(std::move(Config));
 	case EResourceType::Prefab:
-		return Resources.Import<TResourceImporter<UPrefab>>(std::move(Config));
+		return Resources.Import<TResourceImporter<FPrefab>>(std::move(Config));
 	default:
 		MAHO_CORE_ERROR(
 			"EnqueueTypedImport: unsupported type {} for '{}'",
@@ -2572,7 +2571,7 @@ void FEditorLayer::CollectChildFolders(
 	Resources->ForEachRegisteredResource(
 		[&](const std::string& CatalogKey, const FObjectRef& /*Resource*/)
 		{
-			FSoftObjectPath SoftPath;
+			std::string SoftPath;
 			if (!SoftPath.TrySetPath(CatalogKey) || !SoftPath.IsValid())
 			{
 				return;
@@ -3032,7 +3031,7 @@ void FEditorLayer::RefreshContentListing()
 			[&](const std::string& CatalogKey, const FObjectRef& ResourceRef)
 			{
 				++ResourceCount;
-				FSoftObjectPath SoftPath;
+				std::string SoftPath;
 				if (!SoftPath.TrySetPath(CatalogKey) || !SoftPath.IsValid())
 				{
 					return;
@@ -3210,7 +3209,7 @@ void FEditorLayer::TickStartupCassetLoad()
 			Config.ObjectName = std::move(ObjectName);
 			Config.SourcePath = Absolute;
 			Config.Mode = EResourceIOMode::Async;
-			FSoftObjectPath Soft = Resources->Import<FCassetPackageImporter>(std::move(Config));
+			std::string Soft = Resources->Import<FCassetPackageImporter>(std::move(Config));
 			if (Soft.IsValid())
 			{
 				StartupCassetSoftPaths.push_back(std::move(Soft));
@@ -3227,7 +3226,7 @@ void FEditorLayer::TickStartupCassetLoad()
 	StartupCassetLoaded = 0;
 	std::size_t StartupCassetFailed = 0;
 	bool bAnyPending = false;
-	for (const FSoftObjectPath& Soft : StartupCassetSoftPaths)
+	for (const std::string& Soft : StartupCassetSoftPaths)
 	{
 		const EResourceLoadState State = Resources->GetLoadState(Soft);
 		if (State == EResourceLoadState::Pending)
@@ -3406,7 +3405,7 @@ void FEditorLayer::TickManualContentImport()
 		if (Resources->FindRegisteredResource(CatalogKey))
 		{
 			AppendOutput("Import skipped — already registered: " + CatalogKey, spdlog::level::warn);
-			Job.SoftPath = FSoftObjectPath(Job.PackagePath, Job.ObjectName);
+			Job.SoftPath = std::string(Job.PackagePath, Job.ObjectName);
 			Job.bKicked = true;
 			continue;
 		}
@@ -3694,7 +3693,7 @@ void FEditorLayer::DrawOpenResourceBrowsers(FApp& App)
 				continue;
 			}
 
-			FSoftObjectPath SoftPath;
+			std::string SoftPath;
 			(void)SoftPath.TrySetPath(Window.CatalogKey);
 			const std::string TabLabel =
 				std::string(ResourceTypeGlyph(Window.Type)) + "  "
@@ -3912,7 +3911,7 @@ void FEditorLayer::DrawResourceBrowserBody(FResourceBrowserWindow& Window, UReso
 
 	if (Type == EResourceType::Prefab)
 	{
-		if (UPrefab* Prefab = dynamic_cast<UPrefab*>(&Resource))
+		if (FPrefab* Prefab = dynamic_cast<FPrefab*>(&Resource))
 		{
 			if (ImGui::BeginChild("##PrefabJson", ImVec2(0, 0), ImGuiChildFlags_Borders))
 			{
@@ -4655,3 +4654,4 @@ FEditorUIRegistry* TryGetEditorUIRegistry(FApp& App)
 }
 
 } // namespace Maho
+#endif // #if 0 — EditorLayer disabled, pending FResource port

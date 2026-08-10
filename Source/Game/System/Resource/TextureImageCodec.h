@@ -3,8 +3,9 @@
 /**
  * Private CPU image codec for ResourceIO.
  * Raster: OpenImageIO when MAHO_WITH_OPENIMAGEIO, else Windows WIC.
- * KTX2: KTX-Software (libktx) for Import/Export round-trip (including cubemaps).
- * Game-thread only — never touches GPU / RHI.
+ * KTX2: KTX-Software (libktx) for Import/Export round-trip.
+ * Game-thread only - never touches GPU / RHI.
+ * DOTS-aligned: FTexture types instead of UTexture.
  */
 
 #include "Game/System/Resource/ResourceSystem.h"
@@ -34,7 +35,6 @@ namespace TextureImageCodec
 {
 
 [[nodiscard]] MAHO_API std::string GetExtensionLower(std::string_view Path);
-
 [[nodiscard]] MAHO_API bool IsKtx2Extension(std::string_view Ext);
 [[nodiscard]] MAHO_API bool IsRasterExtension(std::string_view Ext);
 
@@ -50,14 +50,13 @@ namespace TextureImageCodec
 	FDecodedImage& Out);
 
 [[nodiscard]] bool EncodeToFile(
-	const UTexture& Texture,
+	const FTexture& Texture,
 	const std::string& DestinationPath,
 	bool bOverwrite);
 
-/** Encode RGBA8 CPU pixels to PNG bytes (WIC). Used when SerializedSource is missing. */
-[[nodiscard]] bool EncodePngToMemory(const UTexture& Texture, std::vector<std::uint8_t>& OutBytes);
+[[nodiscard]] bool EncodePngToMemory(const FTexture& Texture, std::vector<std::uint8_t>& OutBytes);
 
-[[nodiscard]] bool ApplyDecodedToTexture(UTexture& Texture, FDecodedImage&& Image);
+[[nodiscard]] bool ApplyDecodedToTexture(FTexture& Texture, FDecodedImage&& Image);
 
 } // namespace TextureImageCodec
 } // namespace Maho

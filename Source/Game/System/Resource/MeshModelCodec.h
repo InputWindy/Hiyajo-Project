@@ -2,11 +2,11 @@
 
 /**
  * Private CPU model codec for ResourceIO (Assimp when MAHO_WITH_ASSIMP).
- * Decode → FDecodedModelScene → Apply* to U* + UPrefab. Never touches RHI.
+ * Decode -> FDecodedModelScene -> Apply* to F* + FPrefab. Never touches RHI.
+ * DOTS-aligned: no UObject, no GC, no UPackage.
  */
 
 #include "Game/System/Resource/ResourceSystem.h"
-
 #include "Game/System/Resource/TextureImageCodec.h"
 
 #include <cstdint>
@@ -18,9 +18,8 @@
 namespace Maho
 {
 
-class FGCSystem;
 class FResourceSystem;
-class UPackage;
+class FPrefab;
 
 struct FDecodedCoordinateSystem
 {
@@ -49,7 +48,6 @@ struct FDecodedMesh
 	std::vector<float> Normals;
 	std::vector<float> UVs;
 	std::vector<std::uint32_t> Indices;
-	/** Parallel to Positions/3 — optional skinning (Phase 1 may be empty). */
 	std::vector<std::vector<FDecodedBoneWeight>> BoneWeights;
 	std::int32_t MaterialIndex = -1;
 };
@@ -121,7 +119,7 @@ struct FDecodedSceneNode
 	std::int32_t MeshIndex = -1;
 };
 
-/** Temporary CPU bag from Decode — not a UObject, never saved. */
+/** Temporary CPU bag from Decode - not a UObject, never saved. */
 struct FDecodedModelScene
 {
 	std::string SourcePathHint;
@@ -157,20 +155,12 @@ namespace MeshModelCodec
 [[nodiscard]] bool IsModelExtension(std::string_view Ext);
 [[nodiscard]] bool MatchesModelSourcePath(std::string_view Path);
 
-/**
- * Decode model bytes into FDecodedModelScene (Assimp when enabled).
- * Returns false if Assimp is unavailable or parse fails.
- */
 [[nodiscard]] bool DecodeFromMemory(
 	const std::uint8_t* Bytes,
 	std::size_t ByteCount,
 	std::string_view SourcePathHint,
 	FDecodedModelScene& Out);
 
-/**
- * Worker-safe: Assimp decode + load/decode every referenced texture.
- * Safe to call on the ResourceServer thread.
- */
 [[nodiscard]] bool PrepareModelImport(
 	const std::uint8_t* Bytes,
 	std::size_t ByteCount,
@@ -178,16 +168,14 @@ namespace MeshModelCodec
 	FPreparedModelImport& Out);
 
 /**
- * Create sibling U* in Package from Decoded scene; fill Prefab document + SoftPaths.
- * Order: Materials(+textures stubs) → Meshes → Skeleton → Animations → Graph → Prefab JSON.
- * When PreparedTextures is non-null, skips disk IO / decode (uses prepared images).
+ * Apply decoded scene: create F* assets in FResourceSystem under the given package path.
+ * Order: Materials(+textures) -> Meshes -> Skeleton -> Animations -> Prefab JSON.
  */
 [[nodiscard]] bool ApplyDecodedModelScene(
 	FDecodedModelScene&& Scene,
 	FResourceSystem& Resources,
-	FGCSystem& GC,
-	UPackage& Package,
-	UPrefab& Prefab,
+	const std::string& PackagePath,
+	FPrefab& Prefab,
 	const std::unordered_map<std::string, FPreparedTextureImage>* PreparedTextures = nullptr);
 
 } // namespace MeshModelCodec

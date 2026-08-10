@@ -1,23 +1,16 @@
 ﻿#pragma once
 
 /**
- * Resource extension: UResource types, catalog, package IO.
+ * Resource extension: FResource asset types, catalog, package IO.
  *
- * Transfer paradigm (three layers):
- *   FTransferHandle  — BulkData transport status only (poll; no Manager callbacks)
- *   FSoftObjectPath  — Import/Export handle and GetLoadState / Flush / Resolve key
- *   FObjectRef       — live GC object; Manager does not return this as an async ticket
- *
- * Public IO: Import<TImporter> / Export<TExporter> (explicit template; no global registry).
+ * DOTS-aligned: FResource is a plain C++ base class (virtual dtor for OOP dispatch).
+ * No UObject, no FObjectRef, no FSoftObjectPath, no GC pool, no MAHO_OBJECT macros.
+ * Asset paths are plain std::string. Catalog is unordered_map<string, unique_ptr<FResource>>.
  */
 
 #include <Core/DependsPack.h>
 #include <Core/Export.h>
-#include "Game/System/GC/GCSystem.h"
 #include <Core/Json.h>
-#include "Game/Object/Object.h"
-#include "Game/Object/ObjectReflect.h"
-#include "Game/Object/SoftObjectPath.h"
 #include <Core/Sequencer/EngineExtension.h>
 #include <Core/Server/TransferHandle.h>
 #include <Core/TypeList.h>
@@ -36,15 +29,27 @@
 namespace Maho
 {
 
-class UPackage;
-class FGCSystem;
+// ── Shared enums ───────────────────────────────────────────────
+
+enum class EModelAxis : std::uint8_t
+{
+	X = 0,
+	Y = 1,
+	Z = 2,
+	NegativeX = 3,
+	NegativeY = 4,
+	NegativeZ = 5,
+};
+
+enum class EModelHandedness : std::uint8_t
+{
+	Left = 0,
+	Right = 1,
+};
+
 class FResourceSystem;
-class FResourceServer;
-class IResourceImporter;
-class IResourceExporter;
-class FCassetPackageImporter;
-MAHO_ENUM()
-enum class EResourceLoadState : std::uint8_t
+
+enum class EAssetLoadState : std::uint8_t
 {
 	Invalid = 0,
 	Pending,
@@ -52,14 +57,9 @@ enum class EResourceLoadState : std::uint8_t
 	Failed
 };
 
-	/** High-level asset kind (extend as typed resources appear). */
-MAHO_ENUM()
-enum class EResourceType : std::uint8_t
+enum class EAssetType : std::uint8_t
 {
 	Unknown = 0,
-	Raw,
-	/** Legacy alias — Prefer Texture2D. Kept for package/string compat. */
-	Texture,
 	Texture2D,
 	Texture3D,
 	TextureCube,
@@ -68,113 +68,76 @@ enum class EResourceType : std::uint8_t
 	Mesh,
 	Material,
 	Skeleton,
-	/** Imported single-clip animation (Assimp aiAnimation). */
 	Animation,
-	/** Package-inline blend/orchestration of UAnimation SoftPaths. */
 	AnimationGraph,
-	/** Prefab (assembly JSON); may carry scene Metadata including coordinate system. */
 	Prefab,
 	Shader,
 	Audio,
 	Data,
-	/** Level — dynamic streamable sub‑scene. */
 	Level,
-	/** World — root scene resource holding persistent entities + level list. */
 	World,
 };
 
-/** Source asset up-axis (Prefab Metadata / FDecodedModelMetadata). */
-MAHO_ENUM()
-enum class EModelAxis : std::uint8_t
-{
-	Unknown = 0,
-	X,
-	Y,
-	Z,
-	NegX,
-	NegY,
-	NegZ,
-};
+// Keep old alias for backward compat during transition
+using EResourceType = EAssetType;
+using EResourceLoadState = EAssetLoadState;
 
-MAHO_ENUM()
-enum class EModelHandedness : std::uint8_t
-{
-	Unknown = 0,
-	Right,
-	Left,
-};
+// ── FResource: base class for all asset types ──────────────────
 
-/**
- * External-file asset (png / mesh / ...).
- * Outer may be an UPackage (saved content) or null (runtime-only; PathName = ObjectName).
- * Created by the private Resource module; LoadState becomes Ready after BulkData import.
- */
-MAHO_OBJECT()
-class UResource : public UObject
+class FResource
 {
-	MAHO_GENERATED_BODY()
-
 public:
-	static constexpr int PoolSize = 64;
-
-	UResource(
-		UPackage* InOuter,
-		std::string InObjectName,
-		EResourceType InType,
+	FResource() = default;
+	explicit FResource(
+		std::string InName,
+		EAssetType InType,
 		std::string InSourcePath);
-	virtual ~UResource() override;
 
-	void OnPoolTearDown() override;
+	virtual ~FResource() = default;
 
-	MAHO_FUNCTION()
-	[[nodiscard]] EResourceType GetType() const { return Type; }
-	MAHO_FUNCTION()
+	[[nodiscard]] const std::string& GetName() const { return Name; }
+	void SetName(std::string InName) { Name = std::move(InName); }
+
+	[[nodiscard]] EAssetType GetType() const { return Type; }
 	[[nodiscard]] const std::string& GetSourcePath() const { return SourcePath; }
-	/** Alias for GetSourcePath (legacy name). */
-	MAHO_FUNCTION()
-	[[nodiscard]] const std::string& GetPath() const { return SourcePath; }
-	MAHO_FUNCTION()
-	[[nodiscard]] EResourceLoadState GetLoadState() const { return LoadState; }
+	[[nodiscard]] EAssetLoadState GetLoadState() const { return LoadState; }
 
-	/** Mark CPU payload ready (sibling assets created during scene Apply, authored content). */
-	void MarkCpuReady() { SetLoadState(EResourceLoadState::Ready); }
-
-	/** Unsaved memory edits (import / mutate) until written to a .casset. */
-	[[nodiscard]] bool IsDirty() const { return bDirty; }
+	void MarkCpuReady() { LoadState = EAssetLoadState::Ready; bDirty = false; }
 	void MarkDirty() { bDirty = true; }
 	void ClearDirty() { bDirty = false; }
+	[[nodiscard]] bool IsDirty() const { return bDirty; }
+
+	[[nodiscard]] std::uint64_t GetContentGeneration() const { return ContentGeneration; }
+
+	/**
+	 * Return asset paths (std::string) that this asset depends on.
+	 * Used by the .casset codec to populate the DEPS chunk for cascade saves.
+	 */
+	[[nodiscard]] virtual std::vector<std::string> GetReferencePaths() const
+	{
+		return {};
+	}
 
 protected:
 	friend class FResourceSystem;
 
-	void SetLoadState(EResourceLoadState InState) { LoadState = InState; }
-
-	MAHO_PROPERTY()
-	EResourceType Type = EResourceType::Unknown;
-	MAHO_PROPERTY()
+	std::string Name;
+	EAssetType Type = EAssetType::Unknown;
 	std::string SourcePath;
-	MAHO_PROPERTY()
-	EResourceLoadState LoadState = EResourceLoadState::Pending;
+	EAssetLoadState LoadState = EAssetLoadState::Pending;
 	bool bDirty = false;
+	std::uint64_t ContentGeneration = 0;
 };
 
-/**
- * Game-thread texture asset: CPU pixels / BulkData only.
- * Must not hold FRHI* / Vk* / GPU handles. Render creates GPU textures from a snapshot later.
- * Not MAHO_OBJECT — Lua FLua_* wrappers only support UObject as sol base today.
- * Formerly UTextureResource (removed).
- */
-class UTexture : public UResource
+// ── Texture types ──────────────────────────────────────────────
+
+class FTexture : public FResource
 {
 public:
-	static constexpr int PoolSize = 32;
-
-	UTexture(
-		UPackage* InOuter,
-		std::string InObjectName,
-		EResourceType InType,
+	FTexture(
+		std::string InName,
+		EAssetType InType,
 		std::string InSourcePath);
-	~UTexture() override;
 
 	[[nodiscard]] ETextureDimension GetDimension() const { return Dimension; }
 	[[nodiscard]] ETexturePixelFormat GetPixelFormat() const { return PixelFormat; }
@@ -186,16 +149,8 @@ public:
 	[[nodiscard]] bool IsSRGB() const { return bSRGB; }
 	[[nodiscard]] const std::vector<std::uint8_t>& GetPixels() const { return Pixels; }
 	[[nodiscard]] std::vector<std::uint8_t>& GetPixelsMutable() { return Pixels; }
-	[[nodiscard]] std::uint64_t GetContentGeneration() const { return ContentGeneration; }
 
-	/**
-	 * Original compressed file bytes (JPEG/PNG/KTX2/…) kept for .casset round-trip.
-	 * Avoids storing expanded RGBA8 in packages. Decode hint is a path or extension.
-	 */
-	[[nodiscard]] const std::vector<std::uint8_t>& GetSerializedSourceBytes() const
-	{
-		return SerializedSourceBytes;
-	}
+	[[nodiscard]] const std::vector<std::uint8_t>& GetSerializedSourceBytes() const { return SerializedSourceBytes; }
 	[[nodiscard]] const std::string& GetSerializedSourceHint() const { return SerializedSourceHint; }
 	[[nodiscard]] bool HasSerializedSource() const { return !SerializedSourceBytes.empty(); }
 	void SetSerializedSource(std::string Hint, std::vector<std::uint8_t> Bytes);
@@ -224,68 +179,57 @@ protected:
 	std::vector<std::uint8_t> Pixels;
 	std::string SerializedSourceHint;
 	std::vector<std::uint8_t> SerializedSourceBytes;
-	std::uint64_t ContentGeneration = 0;
 };
 
-class UTexture2D : public UTexture
+class FTexture2D : public FTexture
 {
 public:
-	static constexpr int PoolSize = 32;
-	UTexture2D(UPackage* InOuter, std::string InObjectName, EResourceType InType, std::string InSourcePath);
-	~UTexture2D() override;
+	FTexture2D(std::string InName, EAssetType InType, std::string InSourcePath);
 };
 
-class UTexture3D : public UTexture
+class FTexture3D : public FTexture
 {
 public:
-	static constexpr int PoolSize = 16;
-	UTexture3D(UPackage* InOuter, std::string InObjectName, EResourceType InType, std::string InSourcePath);
-	~UTexture3D() override;
+	FTexture3D(std::string InName, EAssetType InType, std::string InSourcePath);
 };
 
-class UTextureCube : public UTexture
+class FTextureCube : public FTexture
 {
 public:
-	static constexpr int PoolSize = 16;
-	UTextureCube(UPackage* InOuter, std::string InObjectName, EResourceType InType, std::string InSourcePath);
-	~UTextureCube() override;
+	FTextureCube(std::string InName, EAssetType InType, std::string InSourcePath);
 };
 
-class UTextureCubeArray : public UTexture
+class FTextureCubeArray : public FTexture
 {
 public:
-	static constexpr int PoolSize = 8;
-	UTextureCubeArray(UPackage* InOuter, std::string InObjectName, EResourceType InType, std::string InSourcePath);
-	~UTextureCubeArray() override;
+	FTextureCubeArray(std::string InName, EAssetType InType, std::string InSourcePath);
 };
 
-class UTexture2DArray : public UTexture
+class FTexture2DArray : public FTexture
 {
 public:
-	static constexpr int PoolSize = 16;
-	UTexture2DArray(UPackage* InOuter, std::string InObjectName, EResourceType InType, std::string InSourcePath);
-	~UTexture2DArray() override;
+	FTexture2DArray(std::string InName, EAssetType InType, std::string InSourcePath);
 };
 
-/** CPU material: SoftPaths to textures + simple scalars (Game thread only). */
-class UMaterial : public UResource
+// ── Material ───────────────────────────────────────────────────
+
+class FMaterial : public FResource
 {
 public:
-	static constexpr int PoolSize = 32;
+	FMaterial(std::string InName, EAssetType InType, std::string InSourcePath);
 
-	UMaterial(UPackage* InOuter, std::string InObjectName, EResourceType InType, std::string InSourcePath);
-	~UMaterial() override;
+	[[nodiscard]] const std::string& GetBaseColorTexture() const { return BaseColorPath; }
+	void SetBaseColorTexture(std::string Path) { BaseColorPath = std::move(Path); }
+	[[nodiscard]] const std::string& GetNormalTexture() const { return NormalPath; }
+	void SetNormalTexture(std::string Path) { NormalPath = std::move(Path); }
+	[[nodiscard]] const std::string& GetMetallicRoughnessTexture() const { return MetallicRoughnessPath; }
+	void SetMetallicRoughnessTexture(std::string Path) { MetallicRoughnessPath = std::move(Path); }
+	[[nodiscard]] const std::string& GetOcclusionTexture() const { return OcclusionPath; }
+	void SetOcclusionTexture(std::string Path) { OcclusionPath = std::move(Path); }
+	[[nodiscard]] const std::string& GetEmissiveTexture() const { return EmissivePath; }
+	void SetEmissiveTexture(std::string Path) { EmissivePath = std::move(Path); }
 
-	[[nodiscard]] const FSoftObjectPath& GetBaseColorTexture() const { return BaseColorTexture; }
-	void SetBaseColorTexture(FSoftObjectPath Path) { BaseColorTexture = std::move(Path); }
-	[[nodiscard]] const FSoftObjectPath& GetNormalTexture() const { return NormalTexture; }
-	void SetNormalTexture(FSoftObjectPath Path) { NormalTexture = std::move(Path); }
-	[[nodiscard]] const FSoftObjectPath& GetMetallicRoughnessTexture() const { return MetallicRoughnessTexture; }
-	void SetMetallicRoughnessTexture(FSoftObjectPath Path) { MetallicRoughnessTexture = std::move(Path); }
-	[[nodiscard]] const FSoftObjectPath& GetOcclusionTexture() const { return OcclusionTexture; }
-	void SetOcclusionTexture(FSoftObjectPath Path) { OcclusionTexture = std::move(Path); }
-	[[nodiscard]] const FSoftObjectPath& GetEmissiveTexture() const { return EmissiveTexture; }
-	void SetEmissiveTexture(FSoftObjectPath Path) { EmissiveTexture = std::move(Path); }
+	[[nodiscard]] std::vector<std::string> GetReferencePaths() const override;
 
 	float BaseColorFactor[4] = {1.f, 1.f, 1.f, 1.f};
 	float MetallicFactor = 0.f;
@@ -293,29 +237,26 @@ public:
 	float EmissiveFactor[3] = {0.f, 0.f, 0.f};
 
 protected:
-	FSoftObjectPath BaseColorTexture;
-	FSoftObjectPath NormalTexture;
-	FSoftObjectPath MetallicRoughnessTexture;
-	FSoftObjectPath OcclusionTexture;
-	FSoftObjectPath EmissiveTexture;
+	std::string BaseColorPath;
+	std::string NormalPath;
+	std::string MetallicRoughnessPath;
+	std::string OcclusionPath;
+	std::string EmissivePath;
 };
 
-/** CPU static mesh geometry + SoftPath to UMaterial. */
-class UStaticMesh : public UResource
+// ── Static Mesh ────────────────────────────────────────────────
+
+class FStaticMesh : public FResource
 {
 public:
-	static constexpr int PoolSize = 32;
+	FStaticMesh(std::string InName, EAssetType InType, std::string InSourcePath);
 
-	UStaticMesh(UPackage* InOuter, std::string InObjectName, EResourceType InType, std::string InSourcePath);
-	~UStaticMesh() override;
-
-	[[nodiscard]] const FSoftObjectPath& GetMaterial() const { return Material; }
-	void SetMaterial(FSoftObjectPath Path) { Material = std::move(Path); }
+	[[nodiscard]] const std::string& GetMaterial() const { return MaterialPath; }
+	void SetMaterial(std::string Path) { MaterialPath = std::move(Path); }
 	[[nodiscard]] const std::vector<float>& GetPositions() const { return Positions; }
 	[[nodiscard]] const std::vector<float>& GetNormals() const { return Normals; }
 	[[nodiscard]] const std::vector<float>& GetUVs() const { return UVs; }
 	[[nodiscard]] const std::vector<std::uint32_t>& GetIndices() const { return Indices; }
-	[[nodiscard]] std::uint64_t GetContentGeneration() const { return ContentGeneration; }
 
 	void SetCpuGeometry(
 		std::vector<float> InPositions,
@@ -323,42 +264,27 @@ public:
 		std::vector<float> InUVs,
 		std::vector<std::uint32_t> InIndices);
 
+	[[nodiscard]] std::vector<std::string> GetReferencePaths() const override;
+
 protected:
-	FSoftObjectPath Material;
+	std::string MaterialPath;
 	std::vector<float> Positions;
 	std::vector<float> Normals;
 	std::vector<float> UVs;
 	std::vector<std::uint32_t> Indices;
-	std::uint64_t ContentGeneration = 0;
 };
+
+// ── Skeleton / Animation ───────────────────────────────────────
 
 struct FSkeletonBone
 {
 	std::string Name;
 	std::int32_t ParentIndex = -1;
-	/** Row-major 4x4 bind local matrix. */
 	float BindLocal[16] = {
 		1, 0, 0, 0,
 		0, 1, 0, 0,
 		0, 0, 1, 0,
 		0, 0, 0, 1};
-};
-
-class USkeleton : public UResource
-{
-public:
-	static constexpr int PoolSize = 16;
-
-	USkeleton(UPackage* InOuter, std::string InObjectName, EResourceType InType, std::string InSourcePath);
-	~USkeleton() override;
-
-	[[nodiscard]] const std::vector<FSkeletonBone>& GetBones() const { return Bones; }
-	[[nodiscard]] std::uint64_t GetContentGeneration() const { return ContentGeneration; }
-	void SetBones(std::vector<FSkeletonBone> InBones);
-
-protected:
-	std::vector<FSkeletonBone> Bones;
-	std::uint64_t ContentGeneration = 0;
 };
 
 struct FAnimationTrack
@@ -367,41 +293,44 @@ struct FAnimationTrack
 	std::vector<FAnimationKey> Keys;
 };
 
-/** Imported single animation clip (CPU tracks). */
-class UAnimation : public UResource
+class FSkeleton : public FResource
 {
 public:
-	static constexpr int PoolSize = 32;
+	FSkeleton(std::string InName, EAssetType InType, std::string InSourcePath);
 
-	UAnimation(UPackage* InOuter, std::string InObjectName, EResourceType InType, std::string InSourcePath);
-	~UAnimation() override;
+	[[nodiscard]] const std::vector<FSkeletonBone>& GetBones() const { return Bones; }
+	void SetBones(std::vector<FSkeletonBone> InBones);
 
-	[[nodiscard]] const FSoftObjectPath& GetSkeleton() const { return Skeleton; }
-	void SetSkeleton(FSoftObjectPath Path);
+protected:
+	std::vector<FSkeletonBone> Bones;
+};
+
+class FAnimation : public FResource
+{
+public:
+	FAnimation(std::string InName, EAssetType InType, std::string InSourcePath);
+
+	[[nodiscard]] const std::string& GetSkeleton() const { return SkeletonPath; }
+	void SetSkeleton(std::string Path);
 	[[nodiscard]] float GetDurationSeconds() const { return DurationSeconds; }
 	void SetDurationSeconds(float Seconds);
 	[[nodiscard]] const std::vector<FAnimationTrack>& GetTracks() const { return Tracks; }
 	void SetTracks(std::vector<FAnimationTrack> InTracks);
-	[[nodiscard]] std::uint64_t GetContentGeneration() const { return ContentGeneration; }
+
+	[[nodiscard]] std::vector<std::string> GetReferencePaths() const override;
 
 protected:
-	FSoftObjectPath Skeleton;
+	std::string SkeletonPath;
 	float DurationSeconds = 0.f;
 	std::vector<FAnimationTrack> Tracks;
-	std::uint64_t ContentGeneration = 0;
 };
 
-/**
- * Package-inline orchestration of UAnimation SoftPaths (default blend config).
- * Authoritative DocumentJson; SourcePath may be empty.
- */
-class UAnimationGraph : public UResource
+// ── AnimationGraph / Prefab ────────────────────────────────────
+
+class FAnimationGraph : public FResource
 {
 public:
-	static constexpr int PoolSize = 16;
-
-	UAnimationGraph(UPackage* InOuter, std::string InObjectName, EResourceType InType, std::string InSourcePath);
-	~UAnimationGraph() override;
+	FAnimationGraph(std::string InName, EAssetType InType, std::string InSourcePath);
 
 	[[nodiscard]] const std::string& GetDocumentJson() const { return DocumentJson; }
 	void SetDocumentJson(std::string Json) { DocumentJson = std::move(Json); }
@@ -410,17 +339,10 @@ protected:
 	std::string DocumentJson;
 };
 
-/**
- * Prefab (assembly). Package-inline JSON: Meshes[], Skeleton, AnimationGraph, Metadata.
- * SourcePath may be empty for authored prefabs; model import sets SourcePath to the scene file.
- */
-class UPrefab : public UResource
+class FPrefab : public FResource
 {
 public:
-	static constexpr int PoolSize = 16;
-
-	UPrefab(UPackage* InOuter, std::string InObjectName, EResourceType InType, std::string InSourcePath);
-	~UPrefab() override;
+	FPrefab(std::string InName, EAssetType InType, std::string InSourcePath);
 
 	[[nodiscard]] const std::string& GetDocumentJson() const { return DocumentJson; }
 	void SetDocumentJson(std::string Json) { DocumentJson = std::move(Json); }
@@ -429,60 +351,8 @@ protected:
 	std::string DocumentJson;
 };
 
-/**
- * Level — dynamic streamable sub‑scene.
- * Owns the serialized ECS blob for entities within this level.
- * Smallest atomic persistence unit: entire level's entities + components saved as binary.
- */
-class ULevel : public UResource
-{
-public:
-	static constexpr int PoolSize = 16;
+// ── BulkData / IO types ────────────────────────────────────────
 
-	ULevel(UPackage* InOuter, std::string InObjectName, EResourceType InType, std::string InSourcePath);
-	~ULevel() override;
-
-	/** Serialized ECS binary blob (entities + components). */
-	[[nodiscard]] const std::vector<std::uint8_t>& GetEntityBlob() const { return EntityBlob; }
-	void SetEntityBlob(std::vector<std::uint8_t> InBlob);
-
-	/** Bounding box for frustum culling. */
-	float BoundsMin[3] = {0, 0, 0};
-	float BoundsMax[3] = {0, 0, 0};
-
-protected:
-	std::vector<std::uint8_t> EntityBlob;
-};
-
-/**
- * World — root scene resource.
- * Holds the persistent entity list (camera, game manager, etc.) and the level manifest.
- * Persistent entities are NOT part of any ULevel.
- */
-class UWorld : public UResource
-{
-public:
-	static constexpr int PoolSize = 8;
-
-	UWorld(UPackage* InOuter, std::string InObjectName, EResourceType InType, std::string InSourcePath);
-	~UWorld() override;
-
-	/** Serialized persistent entity blob (entities not in any level). */
-	[[nodiscard]] const std::vector<std::uint8_t>& GetPersistentEntityBlob() const { return PersistentBlob; }
-	void SetPersistentEntityBlob(std::vector<std::uint8_t> InBlob);
-
-	/** Level SoftPaths for active streaming levels. */
-	[[nodiscard]] const std::vector<FSoftObjectPath>& GetLevels() const { return Levels; }
-	void SetLevels(std::vector<FSoftObjectPath> InLevels);
-	void AddLevel(FSoftObjectPath Path) { Levels.push_back(std::move(Path)); }
-	void RemoveLevel(const std::string& LevelPath);
-
-protected:
-	std::vector<std::uint8_t> PersistentBlob;
-	std::vector<FSoftObjectPath> Levels;
-};
-
-/** Opaque worker-prepared decode payload (model / texture); cast at Apply site. */
 enum class EResourceBulkPreparedKind : std::uint8_t
 {
 	None = 0,
@@ -490,7 +360,6 @@ enum class EResourceBulkPreparedKind : std::uint8_t
 	TextureImage = 2,
 };
 
-/** Raw bytes produced by FResourceServer; consumed by Importer. */
 struct FResourceBulkData
 {
 	std::string SourcePath;
@@ -499,8 +368,6 @@ struct FResourceBulkData
 	std::shared_ptr<void> Prepared;
 };
 
-/** Async = enqueue SoftPath and return; Sync = enqueue then Flush to terminal state. */
-MAHO_ENUM()
 enum class EResourceIOMode : std::uint8_t
 {
 	Async = 0,
@@ -512,7 +379,7 @@ struct FResourceImportConfig
 	std::string PackagePath;
 	std::string ObjectName;
 	std::string SourcePath;
-	EResourceType TypeHint = EResourceType::Unknown;
+	EAssetType TypeHint = EAssetType::Unknown;
 	EResourceIOMode Mode = EResourceIOMode::Async;
 };
 
@@ -523,15 +390,23 @@ struct FResourceExportConfig
 	EResourceIOMode Mode = EResourceIOMode::Async;
 };
 
-/**
- * Resource extension. Catalog / package / SoftPath Import-Export are public.
- * Initialize/Shutdown and GC pool registration stay private (codegen friend).
- */
+/** Per-package container: a collection of FResource* sharing the same .casset file. */
+struct FResourcePackage
+{
+	std::string Name;
+	std::string FilePath;
+	std::uint32_t Flags = 0;
+	std::vector<FResource*> Objects;
+};
+
+// ── FResourceSystem ────────────────────────────────────────────
+
+class IResourceImporter;
+class IResourceExporter;
+class FResourceServer;
+
 class FResourceSystem final
 	: public IEngineExtension
-	, public TDependsPack<
-		TDependsOn<EEngineStage::BeginFrame, TTypeList<FGCSystem>>,
-		TDependsOn<EEngineStage::Init, TTypeList<FGCSystem>>>
 {
 public:
 	FResourceSystem();
@@ -540,74 +415,56 @@ public:
 	FResourceSystem(const FResourceSystem&) = delete;
 	FResourceSystem& operator=(const FResourceSystem&) = delete;
 
-	[[nodiscard]] bool RegisterResource(const FObjectRef& Resource);
-	bool UnregisterResource(UObject* Resource);
-	bool UnregisterResource(const FObjectRef& Resource);
+	/** Register a resource in the catalog (takes ownership via unique_ptr). */
+	[[nodiscard]] bool RegisterResource(std::unique_ptr<FResource> Resource, const std::string& PackagePath = {});
 
-	/**
-	 * Package name-table + catalog for a newly created sibling (e.g. mesh scene Apply).
-	 * Prefers this over calling UPackage::RegisterObject from codecs (that API is private).
-	 */
-	[[nodiscard]] bool RegisterOwnedResource(UPackage& Package, const FObjectRef& Resource);
+	/** Register a sibling resource into an existing package. */
+	[[nodiscard]] bool RegisterOwnedResource(const std::string& PackagePath, FResource* Resource);
 
-	bool UnloadResource(const std::string& VirtualPath);
-	bool UnloadResource(const FObjectRef& Resource);
+	bool UnregisterResource(FResource* Resource);
 
-	/**
-	 * Resolve if loaded; otherwise Sync Import of the .casset for the package, then Resolve.
-	 * Prefer Import<T> when the caller knows the importer type.
-	 */
-	[[nodiscard]] FObjectRef TryLoad(const FSoftObjectPath& SoftPath);
-	[[nodiscard]] FObjectRef TryLoad(const std::string& SoftPathString);
+	/** Find a loaded asset by path (e.g. "Game/Textures/T_Base"). */
+	[[nodiscard]] FResource* FindAsset(const std::string& AssetPath) const;
 
-	/**
-	 * Explicit-template Import: enqueue BulkData for Config.SourcePath, return SoftPath immediately.
-	 * Objects are created on Apply (game thread) when Transfer Succeeded.
-	 */
+	template <typename T>
+	[[nodiscard]] T* FindAsset(const std::string& AssetPath) const
+	{
+		return dynamic_cast<T*>(FindAsset(AssetPath));
+	}
+
+	/** Load package from disk and register all its objects. Returns the package name on success. */
+	[[nodiscard]] std::string TryLoad(const std::string& AssetPath);
+
 	template <typename TImporter>
-	[[nodiscard]] FSoftObjectPath Import(FResourceImportConfig Config);
+	[[nodiscard]] std::string Import(FResourceImportConfig Config);
 
-	/**
-	 * Explicit-template Export: write DestinationPath from SoftPath Source (Resolve → Exporter).
-	 * Returns Source SoftPath on success; null SoftPath on failure.
-	 */
 	template <typename TExporter>
-	[[nodiscard]] FSoftObjectPath Export(FResourceExportConfig Config, const FSoftObjectPath& Source);
+	[[nodiscard]] std::string Export(FResourceExportConfig Config, const std::string& SourcePath);
 
-	/** Write package to binary .casset (Editor Save). Blocks the caller (prefer EnqueueSavePackage). */
+	/** Save a loaded package to .casset. */
 	[[nodiscard]] bool SavePackage(
-		const FObjectRef& Package,
+		const std::string& PackagePath,
 		const std::string& FilePath = {},
-		bool bPretty = true,
 		bool bSaveDependencies = true);
 
-	/**
-	 * Build package document on the calling (game) thread, then zlib+write on a worker.
-	 * Returns false if another save is in flight or validation fails.
-	 */
 	[[nodiscard]] bool EnqueueSavePackage(
-		const FObjectRef& Package,
+		const std::string& PackagePath,
 		const std::string& FilePath = {},
 		bool bSaveDependencies = true);
 	[[nodiscard]] bool IsSavePackageBusy() const;
-	/** Rough 0..1 while IsSavePackageBusy(); 1 when idle after success. */
 	[[nodiscard]] float GetSavePackageProgress() const;
 	[[nodiscard]] const std::string& GetSavePackageStatusText() const;
 
-	[[nodiscard]] EResourceLoadState GetLoadState(const FSoftObjectPath& SoftPath) const;
-	[[nodiscard]] bool IsReady(const FSoftObjectPath& SoftPath) const;
-	void Flush(const FSoftObjectPath& SoftPath);
+	[[nodiscard]] EAssetLoadState GetLoadState(const std::string& AssetPath) const;
+	[[nodiscard]] bool IsReady(const std::string& AssetPath) const;
+	void Flush(const std::string& AssetPath);
 	void FlushAll();
 
-	/** SoftPath / catalog join key (also used by Game→Render proxy registries). */
-	[[nodiscard]] static std::string MakeResourceCatalogKey(const UResource& Resource);
+	[[nodiscard]] static std::string MakeAssetCatalogKey(const std::string& PackagePath, const std::string& ObjectName);
 	[[nodiscard]] static std::string NormalizeResourceVirtualPath(const std::string& VirtualPath);
 
-	/** Iterate registered catalog entries (SoftPath key → live UResource). */
 	void ForEachRegisteredResource(
-		const std::function<void(const std::string& CatalogKey, const FObjectRef& Resource)>& Fn) const;
-
-	[[nodiscard]] FObjectRef FindRegisteredResource(const std::string& CatalogKey) const;
+		const std::function<void(const std::string& CatalogKey, FResource& Resource)>& Fn) const;
 
 	[[nodiscard]] bool IsInitialized() const;
 
@@ -619,7 +476,7 @@ private:
 	template <typename TResource>
 	friend class TResourceImporter;
 	friend class FCassetPackageImporter;
-	friend class UResource;
+	friend class FResource;
 
 	[[nodiscard]] bool Initialize();
 	void Shutdown();
@@ -628,7 +485,7 @@ private:
 	struct FPendingIO
 	{
 		FTransferHandle Handle;
-		FSoftObjectPath SoftPath;
+		std::string AssetPath;
 		FResourceImportConfig Config;
 		std::unique_ptr<IResourceImporter> Importer;
 	};
@@ -636,22 +493,19 @@ private:
 	[[nodiscard]] static std::string NormalizePackageName(std::string Name);
 	[[nodiscard]] static std::string NormalizeSourcePath(std::string Path);
 	[[nodiscard]] static std::string MakeObjectNameFromSource(const std::string& SourcePath);
-	[[nodiscard]] static std::string SoftPathKey(const FSoftObjectPath& SoftPath);
 
-	void UnregisterResourcesInPackage(const std::string& PackageName);
-	/** Drop catalog + Outer for a failed import root (and siblings in the same package). */
-	void AbortFailedImport(UResource& Resource);
-	void CancelPendingImport(UObject* Resource);
+	void UnregisterResourcesInPackage(const std::string& PackagePath);
+	void AbortFailedImport(FResource& Resource);
+	void CancelPendingImport(FResource* Resource);
 	void ProcessReadyIO();
 	void TickSavePackage();
 	void FinalizeSavePackageSuccess();
 	void FinalizeSavePackageFailure();
 
-	[[nodiscard]] FSoftObjectPath EnqueueImport(
+	[[nodiscard]] std::string EnqueueImport(
 		std::unique_ptr<IResourceImporter> Importer,
 		FResourceImportConfig Config);
 
-	/** Create TResource + ImportSource (called from TResourceImporter::ApplyBulkData). */
 	template <typename TResource>
 	[[nodiscard]] bool ApplyTypedBulkData(FResourceImportConfig& Config, FResourceBulkData& Bulk);
 
@@ -661,34 +515,38 @@ private:
 	[[nodiscard]] bool TakeBulkData(FTransferHandle Handle, FResourceBulkData& OutBulk);
 
 	[[nodiscard]] bool SavePackageInternal(
-		const FObjectRef& Package,
+		const std::string& PackagePath,
 		const std::string& FilePath,
-		bool bPretty,
 		bool bSaveDependencies,
 		std::unordered_set<std::string>& SavingPackageNames);
-	/** Sync disk→MCAS hydrate (dependency loads / internal). Prefer Import for SoftPath. */
-	[[nodiscard]] FObjectRef LoadPackage(const std::string& FilePath);
-	[[nodiscard]] FObjectRef LoadPackageInternal(
+
+	[[nodiscard]] FResourcePackage* FindOrCreatePackage(const std::string& PackagePath, const std::string& FilePath = {});
+
+	[[nodiscard]] std::string LoadPackage(const std::string& FilePath);
+	[[nodiscard]] std::string LoadPackageInternal(
 		const std::string& FilePath,
 		std::unordered_set<std::string>& LoadingFilePaths);
-	[[nodiscard]] FObjectRef LoadPackageFromBinary(
+	[[nodiscard]] std::string LoadPackageFromBinary(
 		const std::string& FilePath,
 		const std::uint8_t* FileBytes,
 		std::size_t FileSize,
 		std::unordered_set<std::string>& LoadingFilePaths);
-	[[nodiscard]] FObjectRef ResolveObjectPath(const std::string& PathName) const;
+
+	/** Replicate UPackage model: loaded per-package collections. */
+	std::unordered_map<std::string, std::unique_ptr<FResourcePackage>> Packages;
 
 	std::unique_ptr<FResourceServer> Server;
-	std::unordered_map<std::string, FObjectRef> Resources;
-	/** SoftPath asset-path string → in-flight Import. */
+
+	/** Catalog: "PackagePath/ObjectName" → unique_ptr<FResource>. */
+	std::unordered_map<std::string, std::unique_ptr<FResource>> Catalog;
+
 	std::unordered_map<std::string, FPendingIO> PendingIO;
 	bool bAcceptingNewWork = true;
 
 	struct FAsyncSaveJob
 	{
-		FObjectRef PackageRef;
+		std::string PackagePath;
 		std::string OutPath;
-		std::string PackageName;
 		std::vector<std::uint8_t> Document;
 		std::shared_ptr<std::vector<std::uint8_t>> FileBytes;
 		std::shared_ptr<std::atomic<bool>> bOk;

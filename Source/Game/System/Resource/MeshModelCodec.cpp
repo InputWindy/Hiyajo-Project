@@ -1,10 +1,7 @@
 ﻿#include "Game/System/Resource/MeshModelCodec.h"
 #include "Game/System/Resource/TextureImageCodec.h"
 
-#include "Game/System/GC/GCSystem.h"
 #include "Game/System/Resource/ResourceSystem.h"
-#include "Game/Object/Package.h"
-#include "Game/Object/SoftObjectPath.h"
 #include <Core/System/Log.h>
 #include <Core/System/Utf8Path.h>
 
@@ -61,16 +58,21 @@ std::string SanitizeObjectName(std::string_view Raw, std::string_view Fallback)
 }
 
 /** Package object names must be unique; MMD materials/meshes often share display names. */
-[[nodiscard]] std::string MakeUniqueObjectName(UPackage& Package, std::string BaseName)
+[[nodiscard]] std::string MakeUniqueObjectName(
+	FResourceSystem& Resources,
+	const std::string& PackagePath,
+	std::string BaseName)
 {
-	if (!Package.FindObject(BaseName))
+	const std::string Key = FResourceSystem::MakeAssetCatalogKey(PackagePath, BaseName);
+	if (!Resources.FindAsset(Key))
 	{
 		return BaseName;
 	}
 	for (int Suffix = 1; Suffix < 100000; ++Suffix)
 	{
 		const std::string Candidate = BaseName + "_" + std::to_string(Suffix);
-		if (!Package.FindObject(Candidate))
+		const std::string CandidateKey = FResourceSystem::MakeAssetCatalogKey(PackagePath, Candidate);
+		if (!Resources.FindAsset(CandidateKey))
 		{
 			return Candidate;
 		}
@@ -89,37 +91,26 @@ void CopyMat4(float Out[16], const float* In)
 template <typename TResource>
 [[nodiscard]] TResource* CreateRegisteredResource(
 	FResourceSystem& Resources,
-	FGCSystem& GC,
-	UPackage& Package,
+	const std::string& PackagePath,
 	const std::string& DesiredName,
-	EResourceType Type,
+	EAssetType Type,
 	const std::string& SourcePath)
 {
-	const std::string Name = MakeUniqueObjectName(Package, DesiredName);
+	const std::string Name = MakeUniqueObjectName(Resources, PackagePath, DesiredName);
 	if (Name != DesiredName)
 	{
 		MAHO_CORE_WARN(
 			"MeshModelCodec: renamed '{}' -> '{}' in package '{}'",
 			DesiredName,
 			Name,
-			Package.GetName());
+			PackagePath);
 	}
 
-	FObjectRef Ref = GC.NewObject<TResource>(&Package, Name, Type, SourcePath);
-	TResource* Obj = Ref.Cast<TResource>();
-	if (!Obj)
-	{
-		MAHO_CORE_ERROR("MeshModelCodec: NewObject failed for '{}'", Name);
+	auto Resource = std::make_unique<TResource>(Name, Type, SourcePath);
+	TResource* Raw = Resource.get();
+	if (!Resources.RegisterResource(std::move(Resource), PackagePath))
 		return nullptr;
-	}
-
-	if (!Resources.RegisterOwnedResource(Package, Ref))
-	{
-		MAHO_CORE_ERROR("MeshModelCodec: RegisterOwnedResource failed for '{}'", Name);
-		return nullptr;
-	}
-
-	return Obj;
+	return Raw;
 }
 
 #if defined(MAHO_WITH_ASSIMP) && MAHO_WITH_ASSIMP
@@ -477,7 +468,7 @@ bool DecodeWithAssimp(
 	Out = FDecodedModelScene{};
 	Out.SourcePathHint = Hint;
 	Out.Metadata.CoordinateSystem.Up = EModelAxis::Y;
-	Out.Metadata.CoordinateSystem.Forward = EModelAxis::NegZ;
+	Out.Metadata.CoordinateSystem.Forward = EModelAxis::NegativeZ;
 	Out.Metadata.CoordinateSystem.Handedness = EModelHandedness::Right;
 	Out.Metadata.UnitScale = 1.f;
 
@@ -510,9 +501,9 @@ std::string AxisToString(EModelAxis Axis)
 	case EModelAxis::X: return "X";
 	case EModelAxis::Y: return "Y";
 	case EModelAxis::Z: return "Z";
-	case EModelAxis::NegX: return "-X";
-	case EModelAxis::NegY: return "-Y";
-	case EModelAxis::NegZ: return "-Z";
+	case EModelAxis::NegativeX: return "-X";
+	case EModelAxis::NegativeY: return "-Y";
+	case EModelAxis::NegativeZ: return "-Z";
 	default: return "Y";
 	}
 }
@@ -749,23 +740,22 @@ bool PrepareModelImport(
 bool ApplyDecodedModelScene(
 	FDecodedModelScene&& Scene,
 	FResourceSystem& Resources,
-	FGCSystem& GC,
-	UPackage& Package,
-	UPrefab& Prefab,
+	const std::string& PackagePath,
+	FPrefab& Prefab,
 	const std::unordered_map<std::string, FPreparedTextureImage>* PreparedTextures)
 {
 	// On failure, drop siblings created here (Prefab root is aborted by ProcessReadyIO).
 	struct FApplyRollback
 	{
 		FResourceSystem& Resources;
-		std::vector<FObjectRef> Created;
+		std::vector<FResource*> Created;
 		bool bCommitted = false;
 
-		void Track(UObject* Object)
+		void Track(FResource* Object)
 		{
 			if (Object)
 			{
-				Created.push_back(FObjectRef::Wrap(Object));
+				Created.push_back(Object);
 			}
 		}
 
@@ -775,21 +765,21 @@ bool ApplyDecodedModelScene(
 			{
 				return;
 			}
-			for (FObjectRef& Ref : Created)
+			for (FResource* Obj : Created)
 			{
-				Resources.UnregisterResource(Ref);
+				Resources.UnregisterResource(Obj);
 			}
 		}
 	};
 
 	FApplyRollback Rollback{Resources, {}, false};
 
-	std::vector<std::string> MeshSoftPathStrings;
-	std::vector<UMaterial*> Materials;
+	std::vector<std::string> MeshMaterialPaths;
+	std::vector<FMaterial*> Materials;
 	Materials.reserve(Scene.Materials.size());
 
-	// Dedup texture imports by absolute path / embedded key → SoftPath.
-	std::unordered_map<std::string, FSoftObjectPath> ImportedTextures;
+	// Dedup texture imports by absolute path / embedded key -> AssetPath string.
+	std::unordered_map<std::string, std::string> ImportedTextures;
 
 	auto ResolveTextureDiskPath = [&](const std::string& RelativeOrAbsolute) -> std::string
 	{
@@ -811,7 +801,7 @@ bool ApplyDecodedModelScene(
 		return PathToUtf8(std::filesystem::weakly_canonical(BaseDir / AsPath, ErrorCode));
 	};
 
-	auto ImportTextureSibling = [&](const FDecodedTextureRef& TexRef) -> FSoftObjectPath
+	auto ImportTextureSibling = [&](const FDecodedTextureRef& TexRef) -> std::string
 	{
 		std::string CacheKey;
 		std::vector<std::uint8_t> Bytes;
@@ -903,12 +893,11 @@ bool ApplyDecodedModelScene(
 		const std::string Stem = SanitizeObjectName(
 			PathToUtf8(PathFromUtf8(DecodeHint).stem()),
 			"Texture");
-		UTexture2D* Texture = CreateRegisteredResource<UTexture2D>(
+		FTexture2D* Texture = CreateRegisteredResource<FTexture2D>(
 			Resources,
-			GC,
-			Package,
+			PackagePath,
 			Stem,
-			EResourceType::Texture2D,
+			EAssetType::Texture2D,
 			CacheKey);
 		if (!Texture)
 		{
@@ -929,21 +918,20 @@ bool ApplyDecodedModelScene(
 			Texture->SetSerializedSource(DecodeHint, std::move(SerializedBytes));
 		}
 		Texture->MarkCpuReady();
-		FSoftObjectPath Soft = FSoftObjectPath::FromObject(*Texture);
-		ImportedTextures.emplace(CacheKey, Soft);
-		return Soft;
+		std::string AssetPath = FResourceSystem::MakeAssetCatalogKey(PackagePath, Texture->GetName());
+		ImportedTextures.emplace(CacheKey, AssetPath);
+		return AssetPath;
 	};
 
 	for (std::size_t I = 0; I < Scene.Materials.size(); ++I)
 	{
 		const FDecodedMaterial& Src = Scene.Materials[I];
 		const std::string Name = SanitizeObjectName(Src.Name, "Material_" + std::to_string(I));
-		UMaterial* Mat = CreateRegisteredResource<UMaterial>(
+		FMaterial* Mat = CreateRegisteredResource<FMaterial>(
 			Resources,
-			GC,
-			Package,
+			PackagePath,
 			Name,
-			EResourceType::Material,
+			EAssetType::Material,
 			{});
 		if (!Mat)
 		{
@@ -965,8 +953,8 @@ bool ApplyDecodedModelScene(
 			{
 				continue;
 			}
-			FSoftObjectPath Soft = ImportTextureSibling(Tex);
-			if (!Soft.IsValid())
+			std::string Soft = ImportTextureSibling(Tex);
+			if (Soft.empty())
 			{
 				continue;
 			}
@@ -995,16 +983,18 @@ bool ApplyDecodedModelScene(
 		Materials.push_back(Mat);
 	}
 
+	std::vector<std::string> MeshSoftPathStrings;
+	MeshSoftPathStrings.reserve(Scene.Meshes.size());
+
 	for (std::size_t I = 0; I < Scene.Meshes.size(); ++I)
 	{
 		FDecodedMesh& Src = Scene.Meshes[I];
 		const std::string Name = SanitizeObjectName(Src.Name, "Mesh_" + std::to_string(I));
-		UStaticMesh* Mesh = CreateRegisteredResource<UStaticMesh>(
+		FStaticMesh* Mesh = CreateRegisteredResource<FStaticMesh>(
 			Resources,
-			GC,
-			Package,
+			PackagePath,
 			Name,
-			EResourceType::Mesh,
+			EAssetType::Mesh,
 			{});
 		if (!Mesh)
 		{
@@ -1021,22 +1011,21 @@ bool ApplyDecodedModelScene(
 			Materials[static_cast<std::size_t>(Src.MaterialIndex)])
 		{
 			Mesh->SetMaterial(
-				FSoftObjectPath::FromObject(*Materials[static_cast<std::size_t>(Src.MaterialIndex)]));
+				FResourceSystem::MakeAssetCatalogKey(PackagePath, Materials[static_cast<std::size_t>(Src.MaterialIndex)]->GetName()));
 		}
 		Mesh->MarkCpuReady();
-		MeshSoftPathStrings.push_back(FSoftObjectPath::FromObject(*Mesh).ToString());
+		MeshSoftPathStrings.push_back(FResourceSystem::MakeAssetCatalogKey(PackagePath, Mesh->GetName()));
 	}
 
 	std::string SkeletonSoftPath;
-	FSoftObjectPath SkeletonPath;
+	std::string SkeletonPath;
 	if (!Scene.Skeleton.IsEmpty())
 	{
-		USkeleton* Skeleton = CreateRegisteredResource<USkeleton>(
+		FSkeleton* Skeleton = CreateRegisteredResource<FSkeleton>(
 			Resources,
-			GC,
-			Package,
+			PackagePath,
 			"Skeleton",
-			EResourceType::Skeleton,
+			EAssetType::Skeleton,
 			{});
 		if (!Skeleton)
 		{
@@ -1055,8 +1044,8 @@ bool ApplyDecodedModelScene(
 		}
 		Skeleton->SetBones(std::move(Bones));
 		Skeleton->MarkCpuReady();
-		SkeletonPath = FSoftObjectPath::FromObject(*Skeleton);
-		SkeletonSoftPath = SkeletonPath.ToString();
+		SkeletonPath = FResourceSystem::MakeAssetCatalogKey(PackagePath, Skeleton->GetName());
+		SkeletonSoftPath = SkeletonPath;
 	}
 
 	std::vector<std::string> AnimSoftPathStrings;
@@ -1065,12 +1054,11 @@ bool ApplyDecodedModelScene(
 	{
 		FDecodedAnimation& Src = Scene.Animations[I];
 		const std::string Name = SanitizeObjectName(Src.Name, "Animation_" + std::to_string(I));
-		UAnimation* Anim = CreateRegisteredResource<UAnimation>(
+		FAnimation* Anim = CreateRegisteredResource<FAnimation>(
 			Resources,
-			GC,
-			Package,
+			PackagePath,
 			Name,
-			EResourceType::Animation,
+			EAssetType::Animation,
 			{});
 		if (!Anim)
 		{
@@ -1078,7 +1066,7 @@ bool ApplyDecodedModelScene(
 		}
 		Rollback.Track(Anim);
 		Anim->SetDurationSeconds(Src.DurationSeconds);
-		if (SkeletonPath.IsValid())
+		if (!SkeletonPath.empty())
 		{
 			Anim->SetSkeleton(SkeletonPath);
 		}
@@ -1109,15 +1097,14 @@ bool ApplyDecodedModelScene(
 		}
 		Anim->SetTracks(std::move(Tracks));
 		Anim->MarkCpuReady();
-		AnimSoftPathStrings.push_back(FSoftObjectPath::FromObject(*Anim).ToString());
+		AnimSoftPathStrings.push_back(FResourceSystem::MakeAssetCatalogKey(PackagePath, Anim->GetName()));
 	}
 
-	UAnimationGraph* Graph = CreateRegisteredResource<UAnimationGraph>(
+	FAnimationGraph* Graph = CreateRegisteredResource<FAnimationGraph>(
 		Resources,
-		GC,
-		Package,
+		PackagePath,
 		"AnimationGraph",
-		EResourceType::AnimationGraph,
+		EAssetType::AnimationGraph,
 		{});
 	if (!Graph)
 	{
@@ -1128,7 +1115,7 @@ bool ApplyDecodedModelScene(
 		AnimSoftPathStrings.empty() ? std::string{} : AnimSoftPathStrings.front();
 	Graph->SetDocumentJson(BuildAnimationGraphJson(AnimSoftPathStrings, DefaultAnim));
 	Graph->MarkCpuReady();
-	const std::string GraphSoftPath = FSoftObjectPath::FromObject(*Graph).ToString();
+	const std::string GraphSoftPath = FResourceSystem::MakeAssetCatalogKey(PackagePath, Graph->GetName());
 
 	Prefab.SetDocumentJson(BuildPrefabDocumentJson(
 		Scene.Metadata,

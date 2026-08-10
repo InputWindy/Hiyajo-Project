@@ -211,7 +211,7 @@ namespace
 	return true;
 }
 
-[[nodiscard]] bool EncodeRasterWic(const UTexture& Texture, const std::string& DestinationPath)
+[[nodiscard]] bool EncodeRasterWic(const FTexture& Texture, const std::string& DestinationPath)
 {
 	if (Texture.GetPixelFormat() != ETexturePixelFormat::RGBA8
 		|| Texture.GetPixels().empty()
@@ -331,7 +331,7 @@ namespace
 }
 
 [[nodiscard]] bool EncodeRasterWicToMemory(
-	const UTexture& Texture,
+	const FTexture& Texture,
 	REFGUID ContainerFormat,
 	std::vector<std::uint8_t>& OutBytes)
 {
@@ -573,7 +573,7 @@ namespace
 	return true;
 }
 
-[[nodiscard]] bool EncodeKtx2(const UTexture& Texture, const std::string& DestinationPath)
+[[nodiscard]] bool EncodeKtx2(const FTexture& Texture, const std::string& DestinationPath)
 {
 	if (Texture.GetPixels().empty() || Texture.GetWidth() == 0 || Texture.GetHeight() == 0)
 	{
@@ -794,7 +794,7 @@ bool DecodeFromMemory(
 	return true;
 }
 
-bool EncodeToFile(const UTexture& Texture, const std::string& DestinationPath, bool bOverwrite)
+bool EncodeToFile(const FTexture& Texture, const std::string& DestinationPath, bool bOverwrite)
 {
 	namespace fs = std::filesystem;
 	std::error_code ErrorCode;
@@ -829,7 +829,7 @@ bool EncodeToFile(const UTexture& Texture, const std::string& DestinationPath, b
 #endif
 }
 
-bool EncodePngToMemory(const UTexture& Texture, std::vector<std::uint8_t>& OutBytes)
+bool EncodePngToMemory(const FTexture& Texture, std::vector<std::uint8_t>& OutBytes)
 {
 	OutBytes.clear();
 #if defined(_WIN32)
@@ -846,7 +846,7 @@ bool EncodePngToMemory(const UTexture& Texture, std::vector<std::uint8_t>& OutBy
 #endif
 }
 
-bool ApplyDecodedToTexture(UTexture& Texture, FDecodedImage&& Image)
+bool ApplyDecodedToTexture(FTexture& Texture, FDecodedImage&& Image)
 {
 	Texture.SetCpuImage(
 		Image.Dimension,

@@ -3,6 +3,7 @@
 /**
  * Binary .casset (MCAS) package codec: FileHeader + zlib(Chunk document).
  * CPU payloads are raw blobs (no Base64 / JSON).
+ * DOTS-aligned: works with FResource* collections, not UObject.
  */
 
 #include "Game/System/Resource/ResourceSystem.h"
@@ -14,8 +15,8 @@
 namespace Maho
 {
 
-class UPackage;
-class UResource;
+class FResource;
+struct FResourcePackage;
 
 namespace ResourceCasset
 {
@@ -50,15 +51,11 @@ inline constexpr std::uint32_t kChunkTagOBJS =
 
 inline constexpr std::uint32_t kChunkMustUnderstand = 1u << 0;
 
-inline constexpr std::uint16_t kClassKindResource = 0;
-inline constexpr std::uint16_t kClassKindObject = 1;
-
 inline constexpr std::uint32_t kRecordHasCpu = 1u << 0;
 inline constexpr std::uint32_t kRecordHasRefs = 1u << 1;
 inline constexpr std::uint32_t kRecordHasExtras = 1u << 2;
 
 inline constexpr std::uint16_t kCpuLayoutVersion = 1;
-/** Texture CPU layout: 1 = raw pixels; 2 = optional encoded file blob. */
 inline constexpr std::uint16_t kTextureCpuLayoutRaw = 1;
 inline constexpr std::uint16_t kTextureCpuLayoutEncoded = 2;
 inline constexpr std::uint8_t kTexturePayloadRaw = 0;
@@ -74,12 +71,10 @@ struct FCassetDependency
 struct FCassetParsedObject
 {
 	std::string Name;
-	EResourceType Type = EResourceType::Unknown;
-	std::uint16_t ClassKind = kClassKindResource;
+	EAssetType Type = EAssetType::Unknown;
 	std::string ImportSource;
 	std::uint32_t RecordFlags = 0;
 	std::vector<std::string> Refs;
-	/** Raw CPU sub-payload (after Object fixed header); interpreted by ApplyCpuPayload. */
 	std::vector<std::uint8_t> CpuBytes;
 };
 
@@ -94,14 +89,17 @@ struct FCassetParsedPackage
 
 [[nodiscard]] bool IsCassetBinaryFile(const std::uint8_t* Data, std::size_t Size);
 
-/** Build zlib-wrapped MCAS file bytes from a live package (friend path via FResourceSystem). */
-[[nodiscard]] bool EncodePackageFile(const UPackage& Package, std::vector<std::uint8_t>& OutFileBytes);
+/** Build zlib-wrapped MCAS file bytes from a collection of FResource objects. */
+[[nodiscard]] bool EncodePackageFile(
+	const FResourcePackage& Package,
+	const std::vector<FResource*>& Objects,
+	std::vector<std::uint8_t>& OutFileBytes);
 
-/**
- * Game-thread: snapshot package → uncompressed BinaryDocument (no zlib).
- * Worker-safe follow-up: WrapDocumentToMcasFile.
- */
-[[nodiscard]] bool BuildPackageDocument(const UPackage& Package, std::vector<std::uint8_t>& OutDocument);
+/** Game-thread: snapshot objects → uncompressed BinaryDocument (no zlib). */
+[[nodiscard]] bool BuildPackageDocument(
+	const FResourcePackage& Package,
+	const std::vector<FResource*>& Objects,
+	std::vector<std::uint8_t>& OutDocument);
 
 /** Any-thread: zlib + MCAS header around an uncompressed document. */
 [[nodiscard]] bool WrapDocumentToMcasFile(
@@ -115,10 +113,10 @@ struct FCassetParsedPackage
 	FCassetParsedPackage& OutPackage);
 
 /** Apply typed CPU blob onto a live resource (marks Ready / clears Dirty on success). */
-[[nodiscard]] bool ApplyCpuPayload(UResource& Resource, const std::vector<std::uint8_t>& CpuBytes);
+[[nodiscard]] bool ApplyCpuPayload(FResource& Resource, const std::vector<std::uint8_t>& CpuBytes);
 
 /** Write typed CPU blob for a resource. */
-[[nodiscard]] bool WriteCpuPayloadBytes(const UResource& Resource, std::vector<std::uint8_t>& OutCpuBytes);
+[[nodiscard]] bool WriteCpuPayloadBytes(const FResource& Resource, std::vector<std::uint8_t>& OutCpuBytes);
 
 } // namespace ResourceCasset
 } // namespace Maho

@@ -3,44 +3,33 @@
 namespace Maho
 {
 
-UResource::UResource(
-	UPackage* InOuter,
-	std::string InObjectName,
-	EResourceType InType,
+// ── FResource ──────────────────────────────────────────────────
+
+FResource::FResource(
+	std::string InName,
+	EAssetType InType,
 	std::string InSourcePath)
-	: UObject(InOuter, std::move(InObjectName))
+	: Name(std::move(InName))
 	, Type(InType)
 	, SourcePath(std::move(InSourcePath))
-	, LoadState(EResourceLoadState::Pending)
+	, LoadState(EAssetLoadState::Pending)
 {
 }
 
-UResource::~UResource() = default;
+// ── FTexture ───────────────────────────────────────────────────
 
-void UResource::OnPoolTearDown()
-{
-	if (FResourceSystem* Manager = Detail::GetResourceSystem())
-	{
-		Manager->UnregisterResource(this);
-	}
-}
-
-UTexture::UTexture(
-	UPackage* InOuter,
-	std::string InObjectName,
-	EResourceType InType,
+FTexture::FTexture(
+	std::string InName,
+	EAssetType InType,
 	std::string InSourcePath)
-	: UResource(
-		InOuter,
-		std::move(InObjectName),
-		InType == EResourceType::Unknown ? EResourceType::Texture2D : InType,
+	: FResource(
+		std::move(InName),
+		InType == EAssetType::Unknown ? EAssetType::Texture2D : InType,
 		std::move(InSourcePath))
 {
 }
 
-UTexture::~UTexture() = default;
-
-void UTexture::SetCpuImage(
+void FTexture::SetCpuImage(
 	ETextureDimension InDimension,
 	ETexturePixelFormat InFormat,
 	std::uint32_t InWidth,
@@ -63,132 +52,127 @@ void UTexture::SetCpuImage(
 	++ContentGeneration;
 }
 
-void UTexture::SetSerializedSource(std::string Hint, std::vector<std::uint8_t> Bytes)
+void FTexture::SetSerializedSource(std::string Hint, std::vector<std::uint8_t> Bytes)
 {
 	SerializedSourceHint = std::move(Hint);
 	SerializedSourceBytes = std::move(Bytes);
 }
 
-void UTexture::ClearSerializedSource()
+void FTexture::ClearSerializedSource()
 {
 	SerializedSourceHint.clear();
 	SerializedSourceBytes.clear();
 }
 
-UTexture2D::UTexture2D(
-	UPackage* InOuter,
-	std::string InObjectName,
-	EResourceType InType,
+// ── FTexture2D ─────────────────────────────────────────────────
+
+FTexture2D::FTexture2D(
+	std::string InName,
+	EAssetType InType,
 	std::string InSourcePath)
-	: UTexture(
-		InOuter,
-		std::move(InObjectName),
-		InType == EResourceType::Unknown || InType == EResourceType::Texture
-			? EResourceType::Texture2D
-			: InType,
+	: FTexture(
+		std::move(InName),
+		InType == EAssetType::Unknown ? EAssetType::Texture2D : InType,
 		std::move(InSourcePath))
 {
 	Dimension = ETextureDimension::Tex2D;
 }
 
-UTexture2D::~UTexture2D() = default;
+// ── FTexture3D ─────────────────────────────────────────────────
 
-UTexture3D::UTexture3D(
-	UPackage* InOuter,
-	std::string InObjectName,
-	EResourceType InType,
+FTexture3D::FTexture3D(
+	std::string InName,
+	EAssetType InType,
 	std::string InSourcePath)
-	: UTexture(
-		InOuter,
-		std::move(InObjectName),
-		InType == EResourceType::Unknown ? EResourceType::Texture3D : InType,
+	: FTexture(
+		std::move(InName),
+		InType == EAssetType::Unknown ? EAssetType::Texture3D : InType,
 		std::move(InSourcePath))
 {
 	Dimension = ETextureDimension::Tex3D;
 }
 
-UTexture3D::~UTexture3D() = default;
+// ── FTextureCube ───────────────────────────────────────────────
 
-UTextureCube::UTextureCube(
-	UPackage* InOuter,
-	std::string InObjectName,
-	EResourceType InType,
+FTextureCube::FTextureCube(
+	std::string InName,
+	EAssetType InType,
 	std::string InSourcePath)
-	: UTexture(
-		InOuter,
-		std::move(InObjectName),
-		InType == EResourceType::Unknown ? EResourceType::TextureCube : InType,
+	: FTexture(
+		std::move(InName),
+		InType == EAssetType::Unknown ? EAssetType::TextureCube : InType,
 		std::move(InSourcePath))
 {
 	Dimension = ETextureDimension::Cube;
 	ArrayLayers = 6;
 }
 
-UTextureCube::~UTextureCube() = default;
+// ── FTextureCubeArray ──────────────────────────────────────────
 
-UTextureCubeArray::UTextureCubeArray(
-	UPackage* InOuter,
-	std::string InObjectName,
-	EResourceType InType,
+FTextureCubeArray::FTextureCubeArray(
+	std::string InName,
+	EAssetType InType,
 	std::string InSourcePath)
-	: UTexture(
-		InOuter,
-		std::move(InObjectName),
-		InType == EResourceType::Unknown ? EResourceType::TextureCubeArray : InType,
+	: FTexture(
+		std::move(InName),
+		InType == EAssetType::Unknown ? EAssetType::TextureCubeArray : InType,
 		std::move(InSourcePath))
 {
 	Dimension = ETextureDimension::CubeArray;
 }
 
-UTextureCubeArray::~UTextureCubeArray() = default;
+// ── FTexture2DArray ────────────────────────────────────────────
 
-UTexture2DArray::UTexture2DArray(
-	UPackage* InOuter,
-	std::string InObjectName,
-	EResourceType InType,
+FTexture2DArray::FTexture2DArray(
+	std::string InName,
+	EAssetType InType,
 	std::string InSourcePath)
-	: UTexture(
-		InOuter,
-		std::move(InObjectName),
-		InType == EResourceType::Unknown ? EResourceType::Texture2DArray : InType,
+	: FTexture(
+		std::move(InName),
+		InType == EAssetType::Unknown ? EAssetType::Texture2DArray : InType,
 		std::move(InSourcePath))
 {
 	Dimension = ETextureDimension::Tex2DArray;
 }
 
-UTexture2DArray::~UTexture2DArray() = default;
+// ── FMaterial ──────────────────────────────────────────────────
 
-UMaterial::UMaterial(
-	UPackage* InOuter,
-	std::string InObjectName,
-	EResourceType InType,
+FMaterial::FMaterial(
+	std::string InName,
+	EAssetType InType,
 	std::string InSourcePath)
-	: UResource(
-		InOuter,
-		std::move(InObjectName),
-		InType == EResourceType::Unknown ? EResourceType::Material : InType,
+	: FResource(
+		std::move(InName),
+		InType == EAssetType::Unknown ? EAssetType::Material : InType,
 		std::move(InSourcePath))
 {
 }
 
-UMaterial::~UMaterial() = default;
+std::vector<std::string> FMaterial::GetReferencePaths() const
+{
+	std::vector<std::string> Refs;
+	if (!BaseColorPath.empty()) Refs.push_back(BaseColorPath);
+	if (!NormalPath.empty()) Refs.push_back(NormalPath);
+	if (!MetallicRoughnessPath.empty()) Refs.push_back(MetallicRoughnessPath);
+	if (!OcclusionPath.empty()) Refs.push_back(OcclusionPath);
+	if (!EmissivePath.empty()) Refs.push_back(EmissivePath);
+	return Refs;
+}
 
-UStaticMesh::UStaticMesh(
-	UPackage* InOuter,
-	std::string InObjectName,
-	EResourceType InType,
+// ── FStaticMesh ────────────────────────────────────────────────
+
+FStaticMesh::FStaticMesh(
+	std::string InName,
+	EAssetType InType,
 	std::string InSourcePath)
-	: UResource(
-		InOuter,
-		std::move(InObjectName),
-		InType == EResourceType::Unknown ? EResourceType::Mesh : InType,
+	: FResource(
+		std::move(InName),
+		InType == EAssetType::Unknown ? EAssetType::Mesh : InType,
 		std::move(InSourcePath))
 {
 }
 
-UStaticMesh::~UStaticMesh() = default;
-
-void UStaticMesh::SetCpuGeometry(
+void FStaticMesh::SetCpuGeometry(
 	std::vector<float> InPositions,
 	std::vector<float> InNormals,
 	std::vector<float> InUVs,
@@ -201,88 +185,94 @@ void UStaticMesh::SetCpuGeometry(
 	++ContentGeneration;
 }
 
-void USkeleton::SetBones(std::vector<FSkeletonBone> InBones)
+std::vector<std::string> FStaticMesh::GetReferencePaths() const
+{
+	std::vector<std::string> Refs;
+	if (!MaterialPath.empty()) Refs.push_back(MaterialPath);
+	return Refs;
+}
+
+// ── FSkeleton ──────────────────────────────────────────────────
+
+FSkeleton::FSkeleton(
+	std::string InName,
+	EAssetType InType,
+	std::string InSourcePath)
+	: FResource(
+		std::move(InName),
+		InType == EAssetType::Unknown ? EAssetType::Skeleton : InType,
+		std::move(InSourcePath))
+{
+}
+
+void FSkeleton::SetBones(std::vector<FSkeletonBone> InBones)
 {
 	Bones = std::move(InBones);
 	++ContentGeneration;
 }
 
-void UAnimation::SetSkeleton(FSoftObjectPath Path)
+// ── FAnimation ─────────────────────────────────────────────────
+
+FAnimation::FAnimation(
+	std::string InName,
+	EAssetType InType,
+	std::string InSourcePath)
+	: FResource(
+		std::move(InName),
+		InType == EAssetType::Unknown ? EAssetType::Animation : InType,
+		std::move(InSourcePath))
 {
-	Skeleton = std::move(Path);
+}
+
+void FAnimation::SetSkeleton(std::string Path)
+{
+	SkeletonPath = std::move(Path);
 	++ContentGeneration;
 }
 
-void UAnimation::SetDurationSeconds(float Seconds)
+void FAnimation::SetDurationSeconds(float Seconds)
 {
 	DurationSeconds = Seconds;
 	++ContentGeneration;
 }
 
-void UAnimation::SetTracks(std::vector<FAnimationTrack> InTracks)
+void FAnimation::SetTracks(std::vector<FAnimationTrack> InTracks)
 {
 	Tracks = std::move(InTracks);
 	++ContentGeneration;
 }
 
-USkeleton::USkeleton(
-	UPackage* InOuter,
-	std::string InObjectName,
-	EResourceType InType,
+std::vector<std::string> FAnimation::GetReferencePaths() const
+{
+	std::vector<std::string> Refs;
+	if (!SkeletonPath.empty()) Refs.push_back(SkeletonPath);
+	return Refs;
+}
+
+// ── FAnimationGraph ────────────────────────────────────────────
+
+FAnimationGraph::FAnimationGraph(
+	std::string InName,
+	EAssetType InType,
 	std::string InSourcePath)
-	: UResource(
-		InOuter,
-		std::move(InObjectName),
-		InType == EResourceType::Unknown ? EResourceType::Skeleton : InType,
+	: FResource(
+		std::move(InName),
+		InType == EAssetType::Unknown ? EAssetType::AnimationGraph : InType,
 		std::move(InSourcePath))
 {
 }
 
-USkeleton::~USkeleton() = default;
+// ── FPrefab ────────────────────────────────────────────────────
 
-UAnimation::UAnimation(
-	UPackage* InOuter,
-	std::string InObjectName,
-	EResourceType InType,
+FPrefab::FPrefab(
+	std::string InName,
+	EAssetType InType,
 	std::string InSourcePath)
-	: UResource(
-		InOuter,
-		std::move(InObjectName),
-		InType == EResourceType::Unknown ? EResourceType::Animation : InType,
+	: FResource(
+		std::move(InName),
+		InType == EAssetType::Unknown ? EAssetType::Prefab : InType,
 		std::move(InSourcePath))
 {
 }
-
-UAnimation::~UAnimation() = default;
-
-UAnimationGraph::UAnimationGraph(
-	UPackage* InOuter,
-	std::string InObjectName,
-	EResourceType InType,
-	std::string InSourcePath)
-	: UResource(
-		InOuter,
-		std::move(InObjectName),
-		InType == EResourceType::Unknown ? EResourceType::AnimationGraph : InType,
-		std::move(InSourcePath))
-{
-}
-
-UAnimationGraph::~UAnimationGraph() = default;
-
-UPrefab::UPrefab(
-	UPackage* InOuter,
-	std::string InObjectName,
-	EResourceType InType,
-	std::string InSourcePath)
-	: UResource(
-		InOuter,
-		std::move(InObjectName),
-		InType == EResourceType::Unknown ? EResourceType::Prefab : InType,
-		std::move(InSourcePath))
-{
-}
-
-UPrefab::~UPrefab() = default;
 
 } // namespace Maho

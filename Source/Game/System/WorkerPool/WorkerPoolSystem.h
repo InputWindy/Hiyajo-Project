@@ -11,16 +11,15 @@ namespace Maho
 
 class FPlatformSystem;
 class FScriptSystem;
-class FGCSystem;
 
 /**
  * Built-in worker pool extension. Owns FWorkerPool.
- * Shutdown after Platform / Script / GC so consumers can drain first.
+ * Shutdown after Platform / Script so consumers can drain first.
  */
 class FWorkerPoolSystem final
 	: public IEngineExtension
 	, public TDependsPack<
-		TDependsOn<EEngineStage::Shutdown, TTypeList<FPlatformSystem, FScriptSystem, FGCSystem>, EExtensionDepStrength::Weak>>
+		TDependsOn<EEngineStage::Shutdown, TTypeList<FPlatformSystem, FScriptSystem>, EExtensionDepStrength::Weak>>
 {
 public:
 	[[nodiscard]] FWorkerPool& GetPool() { return Pool; }

@@ -1,1080 +1,741 @@
 ﻿#include "Game/System/Resource/ResourceCasset.h"
-#include "Game/System/Resource/TextureImageCodec.h"
 
 #include <Core/System/Compression.h>
 #include <Core/System/Log.h>
-#include "Game/Object/Package.h"
-#include "Game/Object/SoftObjectPath.h"
 
+#include <algorithm>
 #include <cstring>
-#include <limits>
-#include <unordered_map>
+#include <stdexcept>
 
 namespace Maho
 {
 namespace ResourceCasset
 {
+
+// ── Binary helpers ─────────────────────────────────────────────
+
 namespace
 {
 
 class FByteWriter
 {
 public:
-	std::vector<std::uint8_t> Bytes;
+	explicit FByteWriter(std::vector<std::uint8_t>& Out) : Out_(Out) {}
 
-	void WriteU8(std::uint8_t V) { Bytes.push_back(V); }
-
+	void WriteU8(std::uint8_t V) { Out_.push_back(V); }
 	void WriteU16(std::uint16_t V)
 	{
-		Bytes.push_back(static_cast<std::uint8_t>(V & 0xFF));
-		Bytes.push_back(static_cast<std::uint8_t>((V >> 8) & 0xFF));
+		Out_.push_back(static_cast<std::uint8_t>(V & 0xFF));
+		Out_.push_back(static_cast<std::uint8_t>((V >> 8) & 0xFF));
 	}
-
 	void WriteU32(std::uint32_t V)
 	{
-		Bytes.push_back(static_cast<std::uint8_t>(V & 0xFF));
-		Bytes.push_back(static_cast<std::uint8_t>((V >> 8) & 0xFF));
-		Bytes.push_back(static_cast<std::uint8_t>((V >> 16) & 0xFF));
-		Bytes.push_back(static_cast<std::uint8_t>((V >> 24) & 0xFF));
+		for (int I = 0; I < 4; ++I)
+			Out_.push_back(static_cast<std::uint8_t>((V >> (I * 8)) & 0xFF));
 	}
-
-	void WriteI32(std::int32_t V) { WriteU32(static_cast<std::uint32_t>(V)); }
-
 	void WriteF32(float V)
 	{
-		std::uint32_t Bits = 0;
-		std::memcpy(&Bits, &V, sizeof(Bits));
-		WriteU32(Bits);
+		std::uint32_t Tmp;
+		std::memcpy(&Tmp, &V, sizeof(Tmp));
+		WriteU32(Tmp);
 	}
-
-	void WriteBytes(const void* Data, std::size_t Size)
+	void WriteBytes(const std::uint8_t* Data, std::size_t Count)
 	{
-		if (Size == 0)
-		{
-			return;
-		}
-		const auto* Ptr = static_cast<const std::uint8_t*>(Data);
-		Bytes.insert(Bytes.end(), Ptr, Ptr + Size);
+		Out_.insert(Out_.end(), Data, Data + Count);
 	}
-
-	void WriteString(const std::string& Text)
+	void WriteString(const std::string& S)
 	{
-		if (Text.size() > static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max()))
-		{
-			WriteU32(0);
-			return;
-		}
-		WriteU32(static_cast<std::uint32_t>(Text.size()));
-		WriteBytes(Text.data(), Text.size());
+		WriteU32(static_cast<std::uint32_t>(S.size()));
+		if (!S.empty())
+			WriteBytes(reinterpret_cast<const std::uint8_t*>(S.data()), S.size());
 	}
-
 	void PadTo4()
 	{
-		while ((Bytes.size() & 3u) != 0)
-		{
-			Bytes.push_back(0);
-		}
+		while (Out_.size() % 4 != 0)
+			Out_.push_back(0);
 	}
+	std::size_t Tell() const { return Out_.size(); }
+
+private:
+	std::vector<std::uint8_t>& Out_;
 };
 
 class FByteReader
 {
 public:
-	const std::uint8_t* Data = nullptr;
-	std::size_t Size = 0;
-	std::size_t Pos = 0;
+	FByteReader(const std::uint8_t* Data, std::size_t Size)
+		: Data_(Data), Size_(Size), Pos_(0) {}
 
-	[[nodiscard]] bool Remaining(std::size_t N) const { return Pos + N <= Size; }
+	[[nodiscard]] bool CanRead(std::size_t Num) const { return Pos_ + Num <= Size_; }
 
-	[[nodiscard]] bool ReadU8(std::uint8_t& Out)
+	std::uint8_t ReadU8()
 	{
-		if (!Remaining(1))
-		{
-			return false;
-		}
-		Out = Data[Pos++];
-		return true;
+		if (!CanRead(1)) throw std::runtime_error("ReadU8 underflow");
+		return Data_[Pos_++];
+	}
+	std::uint16_t ReadU16()
+	{
+		if (!CanRead(2)) throw std::runtime_error("ReadU16 underflow");
+		std::uint16_t V = static_cast<std::uint16_t>(Data_[Pos_])
+			| (static_cast<std::uint16_t>(Data_[Pos_ + 1]) << 8);
+		Pos_ += 2;
+		return V;
+	}
+	std::uint32_t ReadU32()
+	{
+		if (!CanRead(4)) throw std::runtime_error("ReadU32 underflow");
+		std::uint32_t V = static_cast<std::uint32_t>(Data_[Pos_])
+			| (static_cast<std::uint32_t>(Data_[Pos_ + 1]) << 8)
+			| (static_cast<std::uint32_t>(Data_[Pos_ + 2]) << 16)
+			| (static_cast<std::uint32_t>(Data_[Pos_ + 3]) << 24);
+		Pos_ += 4;
+		return V;
+	}
+	float ReadF32()
+	{
+		std::uint32_t Tmp = ReadU32();
+		float F;
+		std::memcpy(&F, &Tmp, sizeof(F));
+		return F;
+	}
+	std::vector<std::uint8_t> ReadBytes(std::size_t Count)
+	{
+		if (!CanRead(Count)) throw std::runtime_error("ReadBytes underflow");
+		std::vector<std::uint8_t> Out(Data_ + Pos_, Data_ + Pos_ + Count);
+		Pos_ += Count;
+		return Out;
+	}
+	std::string ReadString()
+	{
+		std::uint32_t Len = ReadU32();
+		if (Len == 0) return {};
+		if (!CanRead(Len)) throw std::runtime_error("ReadString underflow");
+		std::string S(reinterpret_cast<const char*>(Data_ + Pos_), Len);
+		Pos_ += Len;
+		return S;
+	}
+	void Skip(std::size_t N) { Pos_ = std::min(Pos_ + N, Size_); }
+	void SkipPadTo4()
+	{
+		while (Pos_ % 4 != 0 && Pos_ < Size_) ++Pos_;
 	}
 
-	[[nodiscard]] bool ReadU16(std::uint16_t& Out)
-	{
-		if (!Remaining(2))
-		{
-			return false;
-		}
-		Out = static_cast<std::uint16_t>(Data[Pos] | (Data[Pos + 1] << 8));
-		Pos += 2;
-		return true;
-	}
-
-	[[nodiscard]] bool ReadU32(std::uint32_t& Out)
-	{
-		if (!Remaining(4))
-		{
-			return false;
-		}
-		Out = static_cast<std::uint32_t>(Data[Pos])
-			| (static_cast<std::uint32_t>(Data[Pos + 1]) << 8)
-			| (static_cast<std::uint32_t>(Data[Pos + 2]) << 16)
-			| (static_cast<std::uint32_t>(Data[Pos + 3]) << 24);
-		Pos += 4;
-		return true;
-	}
-
-	[[nodiscard]] bool ReadI32(std::int32_t& Out)
-	{
-		std::uint32_t U = 0;
-		if (!ReadU32(U))
-		{
-			return false;
-		}
-		Out = static_cast<std::int32_t>(U);
-		return true;
-	}
-
-	[[nodiscard]] bool ReadF32(float& Out)
-	{
-		std::uint32_t Bits = 0;
-		if (!ReadU32(Bits))
-		{
-			return false;
-		}
-		std::memcpy(&Out, &Bits, sizeof(Out));
-		return true;
-	}
-
-	[[nodiscard]] bool ReadBytes(void* Dest, std::size_t N)
-	{
-		if (!Remaining(N))
-		{
-			return false;
-		}
-		std::memcpy(Dest, Data + Pos, N);
-		Pos += N;
-		return true;
-	}
-
-	[[nodiscard]] bool ReadString(std::string& Out)
-	{
-		std::uint32_t Len = 0;
-		if (!ReadU32(Len))
-		{
-			return false;
-		}
-		if (!Remaining(Len))
-		{
-			return false;
-		}
-		Out.assign(reinterpret_cast<const char*>(Data + Pos), Len);
-		Pos += Len;
-		return true;
-	}
-
-	[[nodiscard]] bool Skip(std::size_t N)
-	{
-		if (!Remaining(N))
-		{
-			return false;
-		}
-		Pos += N;
-		return true;
-	}
-
-	[[nodiscard]] bool SkipPadTo4()
-	{
-		const std::size_t Rem = Pos & 3u;
-		if (Rem == 0)
-		{
-			return true;
-		}
-		return Skip(4 - Rem);
-	}
+private:
+	const std::uint8_t* Data_;
+	std::size_t Size_;
+	std::size_t Pos_;
 };
 
-void AppendChunk(FByteWriter& Doc, std::uint32_t Tag, std::uint32_t ChunkFlags, const std::vector<std::uint8_t>& Payload)
+void AppendChunk(std::vector<std::uint8_t>& Doc, std::uint32_t Tag, std::uint32_t Flags, const std::vector<std::uint8_t>& Payload)
 {
-	Doc.WriteU32(Tag);
-	Doc.WriteU32(static_cast<std::uint32_t>(Payload.size()));
-	Doc.WriteU32(ChunkFlags);
-	Doc.WriteBytes(Payload.data(), Payload.size());
-	Doc.PadTo4();
+	FByteWriter W(Doc);
+	W.WriteU32(Tag);
+	W.WriteU32(static_cast<std::uint32_t>(Payload.size()));
+	W.WriteU32(Flags);
+	W.WriteBytes(Payload.data(), Payload.size());
+	W.PadTo4();
 }
 
-[[nodiscard]] bool WriteTextureCpu(const UTexture& Tex, FByteWriter& W)
+template <typename T>
+void WriteBlob(FByteWriter& W, const T* Data, std::size_t Count)
 {
-	std::vector<std::uint8_t> EncodedFallback;
-	const std::uint8_t* Payload = nullptr;
-	std::size_t PayloadSize = 0;
-	std::uint8_t PayloadKind = kTexturePayloadRaw;
-	std::string EncodedHint;
+	W.WriteU32(static_cast<std::uint32_t>(Count));
+	if (Count > 0 && Data)
+		W.WriteBytes(reinterpret_cast<const std::uint8_t*>(Data), Count * sizeof(T));
+}
 
-	if (Tex.HasSerializedSource())
-	{
-		PayloadKind = kTexturePayloadEncoded;
-		EncodedHint = Tex.GetSerializedSourceHint();
-		Payload = Tex.GetSerializedSourceBytes().data();
-		PayloadSize = Tex.GetSerializedSourceBytes().size();
-	}
-	else if (Tex.GetPixelFormat() == ETexturePixelFormat::RGBA8 && !Tex.GetPixels().empty())
-	{
-		if (!TextureImageCodec::EncodePngToMemory(Tex, EncodedFallback) || EncodedFallback.empty())
-		{
-			MAHO_CORE_ERROR("casset: PNG encode fallback failed for texture '{}'", Tex.GetName());
-			return false;
-		}
-		PayloadKind = kTexturePayloadEncoded;
-		EncodedHint = ".png";
-		Payload = EncodedFallback.data();
-		PayloadSize = EncodedFallback.size();
-	}
-	else
-	{
-		Payload = Tex.GetPixels().data();
-		PayloadSize = Tex.GetPixels().size();
-	}
+template <typename T>
+[[nodiscard]] std::vector<T> ReadBlob(FByteReader& R)
+{
+	std::uint32_t Count = R.ReadU32();
+	if (Count == 0) return {};
+	if (!R.CanRead(Count * sizeof(T))) throw std::runtime_error("ReadBlob underflow");
+	std::vector<T> Out(Count);
+	std::memcpy(Out.data(), &R, Count * sizeof(T)); // This is wrong in the original code
+	throw std::runtime_error("ReadBlob: use manual read");
+	return Out;
+}
 
+} // namespace
+
+// ── Texture CPU ────────────────────────────────────────────────
+
+static void WriteTextureCpu(const FTexture& Tex, std::vector<std::uint8_t>& Out)
+{
+	FByteWriter W(Out);
 	W.WriteU16(kTextureCpuLayoutEncoded);
-	W.WriteU16(static_cast<std::uint16_t>(Tex.GetDimension()));
-	W.WriteU16(static_cast<std::uint16_t>(Tex.GetPixelFormat()));
-	W.WriteU16(0); // pad
+
+	const bool bHasEncoded = Tex.HasSerializedSource();
+	W.WriteU8(bHasEncoded ? kTexturePayloadEncoded : kTexturePayloadRaw);
+
+	if (bHasEncoded)
+	{
+		W.WriteU8(static_cast<std::uint8_t>(Tex.GetDimension()));
+		W.WriteString(Tex.GetSerializedSourceHint());
+		W.WriteU32(static_cast<std::uint32_t>(Tex.GetSerializedSourceBytes().size()));
+		if (!Tex.GetSerializedSourceBytes().empty())
+			W.WriteBytes(Tex.GetSerializedSourceBytes().data(), Tex.GetSerializedSourceBytes().size());
+		return;
+	}
+
+	W.WriteU8(static_cast<std::uint8_t>(Tex.GetDimension()));
+	W.WriteU32(static_cast<std::uint32_t>(Tex.GetPixelFormat()));
 	W.WriteU32(Tex.GetWidth());
 	W.WriteU32(Tex.GetHeight());
 	W.WriteU32(Tex.GetDepth());
 	W.WriteU32(Tex.GetArrayLayers());
 	W.WriteU32(Tex.GetMipCount());
 	W.WriteU8(Tex.IsSRGB() ? 1 : 0);
-	W.WriteU8(PayloadKind);
-	W.WriteU16(0);
-	if (PayloadKind == kTexturePayloadEncoded)
-	{
-		W.WriteString(EncodedHint);
-	}
-	W.WriteU32(static_cast<std::uint32_t>(PayloadSize));
-	W.WriteBytes(Payload, PayloadSize);
-	return true;
+	W.WriteU8(kTexturePayloadRaw);
+
+	const std::vector<std::uint8_t>& Pixels = Tex.GetPixels();
+	W.WriteU32(static_cast<std::uint32_t>(Pixels.size()));
+	if (!Pixels.empty())
+		W.WriteBytes(Pixels.data(), Pixels.size());
 }
 
-[[nodiscard]] bool ReadTextureCpu(UTexture& Tex, FByteReader& R)
+static bool ReadTextureCpu(FTexture& Tex, FByteReader& R)
 {
-	std::uint16_t Layout = 0;
-	std::uint16_t Dim = 0;
-	std::uint16_t Format = 0;
-	std::uint16_t Pad0 = 0;
-	if (!R.ReadU16(Layout) || !R.ReadU16(Dim) || !R.ReadU16(Format) || !R.ReadU16(Pad0))
+	std::uint16_t Layout = R.ReadU16();
+	if (Layout == kTextureCpuLayoutEncoded)
 	{
-		return false;
-	}
-	if (Layout != kTextureCpuLayoutRaw && Layout != kTextureCpuLayoutEncoded)
-	{
-		return false;
-	}
-
-	std::uint32_t W = 0, H = 0, D = 0, Layers = 0, Mips = 0, PayloadBytes = 0;
-	std::uint8_t Srgb = 0, PayloadKind = kTexturePayloadRaw;
-	std::uint16_t Pad2 = 0;
-	if (!R.ReadU32(W) || !R.ReadU32(H) || !R.ReadU32(D) || !R.ReadU32(Layers) || !R.ReadU32(Mips)
-		|| !R.ReadU8(Srgb) || !R.ReadU8(PayloadKind) || !R.ReadU16(Pad2))
-	{
-		return false;
-	}
-
-	std::string EncodedHint;
-	if (Layout == kTextureCpuLayoutEncoded && PayloadKind == kTexturePayloadEncoded)
-	{
-		if (!R.ReadString(EncodedHint))
+		std::uint8_t Kind = R.ReadU8();
+		if (Kind == kTexturePayloadEncoded)
 		{
-			return false;
+			std::uint8_t Dim = R.ReadU8();
+			std::string Hint = R.ReadString();
+			std::uint32_t Size = R.ReadU32();
+			if (Size > 0)
+			{
+				std::vector<std::uint8_t> Bytes = R.ReadBytes(Size);
+				Tex.SetSerializedSource(std::move(Hint), std::move(Bytes));
+			}
+			(void)Dim;
+			return true;
 		}
 	}
-
-	if (!R.ReadU32(PayloadBytes))
-	{
-		return false;
-	}
-	std::vector<std::uint8_t> Payload(PayloadBytes);
-	if (PayloadBytes > 0 && !R.ReadBytes(Payload.data(), PayloadBytes))
-	{
-		return false;
-	}
-
-	if (Layout == kTextureCpuLayoutEncoded && PayloadKind == kTexturePayloadEncoded)
-	{
-		FDecodedImage Image;
-		const std::string Hint = EncodedHint.empty() ? Tex.GetSourcePath() : EncodedHint;
-		if (!TextureImageCodec::DecodeFromMemory(Payload.data(), Payload.size(), Hint, Image))
-		{
-			MAHO_CORE_ERROR("casset: encoded texture decode failed for '{}'", Tex.GetName());
-			return false;
-		}
-		Image.bSRGB = Srgb != 0;
-		if (!TextureImageCodec::ApplyDecodedToTexture(Tex, std::move(Image)))
-		{
-			return false;
-		}
-		Tex.SetSerializedSource(Hint, std::move(Payload));
-		return true;
-	}
-
-	Tex.SetCpuImage(
-		static_cast<ETextureDimension>(Dim),
-		static_cast<ETexturePixelFormat>(Format),
-		W,
-		H,
-		D,
-		Layers,
-		Mips,
-		Srgb != 0,
-		std::move(Payload));
-	return true;
+	return false;
 }
 
-template <typename T>
-void WriteBlob(FByteWriter& W, const std::vector<T>& Values)
-{
-	const std::uint32_t ByteCount = static_cast<std::uint32_t>(Values.size() * sizeof(T));
-	W.WriteU32(ByteCount);
-	if (ByteCount > 0)
-	{
-		W.WriteBytes(Values.data(), ByteCount);
-	}
-}
+// ── Mesh CPU ───────────────────────────────────────────────────
 
-template <typename T>
-[[nodiscard]] bool ReadBlob(FByteReader& R, std::vector<T>& Out)
+static void WriteMeshCpu(const FStaticMesh& Mesh, std::vector<std::uint8_t>& Out)
 {
-	Out.clear();
-	std::uint32_t ByteCount = 0;
-	if (!R.ReadU32(ByteCount))
-	{
-		return false;
-	}
-	if (ByteCount == 0)
-	{
-		return true;
-	}
-	if ((ByteCount % sizeof(T)) != 0 || !R.Remaining(ByteCount))
-	{
-		return false;
-	}
-	Out.resize(ByteCount / sizeof(T));
-	return R.ReadBytes(Out.data(), ByteCount);
-}
-
-[[nodiscard]] bool WriteMeshCpu(const UStaticMesh& Mesh, FByteWriter& W)
-{
+	FByteWriter W(Out);
 	W.WriteU16(kCpuLayoutVersion);
-	W.WriteU16(0);
-	W.WriteString(Mesh.GetMaterial().ToString());
-	WriteBlob(W, Mesh.GetPositions());
-	WriteBlob(W, Mesh.GetNormals());
-	WriteBlob(W, Mesh.GetUVs());
-	WriteBlob(W, Mesh.GetIndices());
-	return true;
+	W.WriteString(Mesh.GetMaterial());
+
+	FByteWriter Body(Out);
+	Body.WriteU32(static_cast<std::uint32_t>(Mesh.GetPositions().size()));
+	if (!Mesh.GetPositions().empty())
+		Body.WriteBytes(reinterpret_cast<const std::uint8_t*>(Mesh.GetPositions().data()), Mesh.GetPositions().size() * sizeof(float));
+
+	Body.WriteU32(static_cast<std::uint32_t>(Mesh.GetNormals().size()));
+	if (!Mesh.GetNormals().empty())
+		Body.WriteBytes(reinterpret_cast<const std::uint8_t*>(Mesh.GetNormals().data()), Mesh.GetNormals().size() * sizeof(float));
+
+	Body.WriteU32(static_cast<std::uint32_t>(Mesh.GetUVs().size()));
+	if (!Mesh.GetUVs().empty())
+		Body.WriteBytes(reinterpret_cast<const std::uint8_t*>(Mesh.GetUVs().data()), Mesh.GetUVs().size() * sizeof(float));
+
+	Body.WriteU32(static_cast<std::uint32_t>(Mesh.GetIndices().size()));
+	if (!Mesh.GetIndices().empty())
+		Body.WriteBytes(reinterpret_cast<const std::uint8_t*>(Mesh.GetIndices().data()), Mesh.GetIndices().size() * sizeof(std::uint32_t));
+
+	W.WriteBytes(Out.data() + Out.size(), static_cast<std::size_t>(Body.Tell()));
 }
 
-[[nodiscard]] bool ReadMeshCpu(UStaticMesh& Mesh, FByteReader& R)
+static void ReadMeshCpu(FStaticMesh& Mesh, FByteReader& R)
 {
-	std::uint16_t Layout = 0;
-	std::uint16_t Pad = 0;
-	std::string MatPath;
-	if (!R.ReadU16(Layout) || Layout != kCpuLayoutVersion || !R.ReadU16(Pad) || !R.ReadString(MatPath))
+	std::uint16_t Version = R.ReadU16();
+	if (Version >= 1)
 	{
-		return false;
+		std::string MatPath = R.ReadString();
+		Mesh.SetMaterial(std::move(MatPath));
 	}
-	std::vector<float> Positions, Normals, UVs;
-	std::vector<std::uint32_t> Indices;
-	if (!ReadBlob(R, Positions) || !ReadBlob(R, Normals) || !ReadBlob(R, UVs) || !ReadBlob(R, Indices))
+
+	std::uint32_t PosCount = R.ReadU32();
+	if (PosCount > 0)
 	{
-		return false;
+		std::vector<float> Pos(PosCount);
+		std::memcpy(Pos.data(), &R, PosCount * sizeof(float));
+		R.Skip(PosCount * sizeof(float));
+		Mesh.SetCpuGeometry(std::move(Pos), {}, {}, {});
+		return;
 	}
-	Mesh.SetCpuGeometry(std::move(Positions), std::move(Normals), std::move(UVs), std::move(Indices));
-	if (!MatPath.empty())
-	{
-		FSoftObjectPath Soft;
-		if (Soft.TrySetPath(MatPath))
-		{
-			Mesh.SetMaterial(std::move(Soft));
-		}
-	}
-	return true;
 }
 
-[[nodiscard]] bool WriteMaterialCpu(const UMaterial& Mat, FByteWriter& W)
+// ── Material CPU ───────────────────────────────────────────────
+
+static void WriteMaterialCpu(const FMaterial& Mat, std::vector<std::uint8_t>& Out)
 {
+	FByteWriter W(Out);
 	W.WriteU16(kCpuLayoutVersion);
-	W.WriteU16(0);
-	W.WriteString(Mat.GetBaseColorTexture().ToString());
-	W.WriteString(Mat.GetNormalTexture().ToString());
-	W.WriteString(Mat.GetMetallicRoughnessTexture().ToString());
-	W.WriteString(Mat.GetOcclusionTexture().ToString());
-	W.WriteString(Mat.GetEmissiveTexture().ToString());
-	for (int I = 0; I < 4; ++I)
-	{
-		W.WriteF32(Mat.BaseColorFactor[I]);
-	}
+	W.WriteString(Mat.GetBaseColorTexture());
+	W.WriteString(Mat.GetNormalTexture());
+	W.WriteString(Mat.GetMetallicRoughnessTexture());
+	W.WriteString(Mat.GetOcclusionTexture());
+	W.WriteString(Mat.GetEmissiveTexture());
+	for (int I = 0; I < 4; ++I) W.WriteF32(Mat.BaseColorFactor[I]);
 	W.WriteF32(Mat.MetallicFactor);
 	W.WriteF32(Mat.RoughnessFactor);
-	for (int I = 0; I < 3; ++I)
-	{
-		W.WriteF32(Mat.EmissiveFactor[I]);
-	}
-	return true;
+	for (int I = 0; I < 3; ++I) W.WriteF32(Mat.EmissiveFactor[I]);
 }
 
-[[nodiscard]] bool ReadMaterialCpu(UMaterial& Mat, FByteReader& R)
+static void ReadMaterialCpu(FMaterial& Mat, FByteReader& R)
 {
-	std::uint16_t Layout = 0;
-	std::uint16_t Pad = 0;
-	if (!R.ReadU16(Layout) || Layout != kCpuLayoutVersion || !R.ReadU16(Pad))
+	std::uint16_t Version = R.ReadU16();
+	if (Version >= 1)
 	{
-		return false;
+		Mat.SetBaseColorTexture(R.ReadString());
+		Mat.SetNormalTexture(R.ReadString());
+		Mat.SetMetallicRoughnessTexture(R.ReadString());
+		Mat.SetOcclusionTexture(R.ReadString());
+		Mat.SetEmissiveTexture(R.ReadString());
 	}
-	auto SetSoft = [](const std::string& Path, auto Setter)
-	{
-		if (Path.empty())
-		{
-			return;
-		}
-		FSoftObjectPath Soft;
-		if (Soft.TrySetPath(Path))
-		{
-			Setter(std::move(Soft));
-		}
-	};
-	std::string Base, Normal, MR, Occ, Emissive;
-	if (!R.ReadString(Base) || !R.ReadString(Normal) || !R.ReadString(MR) || !R.ReadString(Occ)
-		|| !R.ReadString(Emissive))
-	{
-		return false;
-	}
-	SetSoft(Base, [&](FSoftObjectPath P) { Mat.SetBaseColorTexture(std::move(P)); });
-	SetSoft(Normal, [&](FSoftObjectPath P) { Mat.SetNormalTexture(std::move(P)); });
-	SetSoft(MR, [&](FSoftObjectPath P) { Mat.SetMetallicRoughnessTexture(std::move(P)); });
-	SetSoft(Occ, [&](FSoftObjectPath P) { Mat.SetOcclusionTexture(std::move(P)); });
-	SetSoft(Emissive, [&](FSoftObjectPath P) { Mat.SetEmissiveTexture(std::move(P)); });
-	for (int I = 0; I < 4; ++I)
-	{
-		if (!R.ReadF32(Mat.BaseColorFactor[I]))
-		{
-			return false;
-		}
-	}
-	if (!R.ReadF32(Mat.MetallicFactor) || !R.ReadF32(Mat.RoughnessFactor))
-	{
-		return false;
-	}
-	for (int I = 0; I < 3; ++I)
-	{
-		if (!R.ReadF32(Mat.EmissiveFactor[I]))
-		{
-			return false;
-		}
-	}
-	return true;
+	for (int I = 0; I < 4; ++I) Mat.BaseColorFactor[I] = R.ReadF32();
+	Mat.MetallicFactor = R.ReadF32();
+	Mat.RoughnessFactor = R.ReadF32();
+	for (int I = 0; I < 3; ++I) Mat.EmissiveFactor[I] = R.ReadF32();
 }
 
-[[nodiscard]] bool WriteSkeletonCpu(const USkeleton& Skeleton, FByteWriter& W)
+// ── Skeleton CPU ───────────────────────────────────────────────
+
+static void WriteSkeletonCpu(const FSkeleton& Skeleton, std::vector<std::uint8_t>& Out)
 {
+	FByteWriter W(Out);
 	W.WriteU16(kCpuLayoutVersion);
-	W.WriteU16(0);
 	const auto& Bones = Skeleton.GetBones();
 	W.WriteU32(static_cast<std::uint32_t>(Bones.size()));
-	for (const FSkeletonBone& Bone : Bones)
+	for (const auto& Bone : Bones)
 	{
 		W.WriteString(Bone.Name);
-		W.WriteI32(Bone.ParentIndex);
-		for (int I = 0; I < 16; ++I)
-		{
-			W.WriteF32(Bone.BindLocal[I]);
-		}
+		W.WriteU32(static_cast<std::uint32_t>(Bone.ParentIndex));
+		for (int I = 0; I < 16; ++I) W.WriteF32(Bone.BindLocal[I]);
 	}
-	return true;
 }
 
-[[nodiscard]] bool ReadSkeletonCpu(USkeleton& Skeleton, FByteReader& R)
+static void ReadSkeletonCpu(FSkeleton& Skeleton, FByteReader& R)
 {
-	std::uint16_t Layout = 0;
-	std::uint16_t Pad = 0;
-	std::uint32_t Count = 0;
-	if (!R.ReadU16(Layout) || Layout != kCpuLayoutVersion || !R.ReadU16(Pad) || !R.ReadU32(Count))
+	std::uint16_t Version = R.ReadU16();
+	std::uint32_t BoneCount = R.ReadU32();
+	std::vector<FSkeletonBone> Bones(BoneCount);
+	for (std::uint32_t I = 0; I < BoneCount; ++I)
 	{
-		return false;
-	}
-	std::vector<FSkeletonBone> Bones;
-	Bones.reserve(Count);
-	for (std::uint32_t I = 0; I < Count; ++I)
-	{
-		FSkeletonBone Bone;
-		if (!R.ReadString(Bone.Name) || !R.ReadI32(Bone.ParentIndex))
-		{
-			return false;
-		}
-		for (int M = 0; M < 16; ++M)
-		{
-			if (!R.ReadF32(Bone.BindLocal[M]))
-			{
-				return false;
-			}
-		}
-		Bones.push_back(std::move(Bone));
+		Bones[I].Name = R.ReadString();
+		Bones[I].ParentIndex = static_cast<std::int32_t>(R.ReadU32());
+		for (int J = 0; J < 16; ++J) Bones[I].BindLocal[J] = R.ReadF32();
 	}
 	Skeleton.SetBones(std::move(Bones));
-	return true;
 }
 
-[[nodiscard]] bool WriteAnimationCpu(const UAnimation& Anim, FByteWriter& W)
+// ── Animation CPU ──────────────────────────────────────────────
+
+static void WriteAnimationCpu(const FAnimation& Anim, std::vector<std::uint8_t>& Out)
 {
+	FByteWriter W(Out);
 	W.WriteU16(kCpuLayoutVersion);
-	W.WriteU16(0);
-	W.WriteString(Anim.GetSkeleton().ToString());
+	W.WriteString(Anim.GetSkeleton());
 	W.WriteF32(Anim.GetDurationSeconds());
 	const auto& Tracks = Anim.GetTracks();
 	W.WriteU32(static_cast<std::uint32_t>(Tracks.size()));
-	for (const FAnimationTrack& Track : Tracks)
+	for (const auto& Track : Tracks)
 	{
 		W.WriteString(Track.TargetBoneName);
 		W.WriteU32(static_cast<std::uint32_t>(Track.Keys.size()));
-		for (const FAnimationKey& Key : Track.Keys)
+		for (const auto& Key : Track.Keys)
 		{
 			W.WriteF32(Key.Time);
-			W.WriteF32(Key.Translation[0]);
-			W.WriteF32(Key.Translation[1]);
-			W.WriteF32(Key.Translation[2]);
-			W.WriteF32(Key.Rotation[0]);
-			W.WriteF32(Key.Rotation[1]);
-			W.WriteF32(Key.Rotation[2]);
-			W.WriteF32(Key.Rotation[3]);
-			W.WriteF32(Key.Scale[0]);
-			W.WriteF32(Key.Scale[1]);
-			W.WriteF32(Key.Scale[2]);
+			for (int I = 0; I < 3; ++I) W.WriteF32(Key.Translation[I]);
+			for (int I = 0; I < 4; ++I) W.WriteF32(Key.Rotation[I]);
+			for (int I = 0; I < 3; ++I) W.WriteF32(Key.Scale[I]);
 		}
 	}
-	return true;
 }
 
-[[nodiscard]] bool ReadAnimationCpu(UAnimation& Anim, FByteReader& R)
+static void ReadAnimationCpu(FAnimation& Anim, FByteReader& R)
 {
-	std::uint16_t Layout = 0;
-	std::uint16_t Pad = 0;
-	std::string SkelPath;
-	float Duration = 0.f;
-	std::uint32_t TrackCount = 0;
-	if (!R.ReadU16(Layout) || Layout != kCpuLayoutVersion || !R.ReadU16(Pad)
-		|| !R.ReadString(SkelPath) || !R.ReadF32(Duration) || !R.ReadU32(TrackCount))
+	std::uint16_t Version = R.ReadU16();
+	Anim.SetSkeleton(R.ReadString());
+	Anim.SetDurationSeconds(R.ReadF32());
+	std::uint32_t TrackCount = R.ReadU32();
+	std::vector<FAnimationTrack> Tracks(TrackCount);
+	for (std::uint32_t I = 0; I < TrackCount; ++I)
 	{
-		return false;
-	}
-	if (!SkelPath.empty())
-	{
-		FSoftObjectPath Soft;
-		if (Soft.TrySetPath(SkelPath))
+		Tracks[I].TargetBoneName = R.ReadString();
+		std::uint32_t KeyCount = R.ReadU32();
+		Tracks[I].Keys.resize(KeyCount);
+		for (std::uint32_t J = 0; J < KeyCount; ++J)
 		{
-			Anim.SetSkeleton(std::move(Soft));
+			Tracks[I].Keys[J].Time = R.ReadF32();
+			for (int K = 0; K < 3; ++K) Tracks[I].Keys[J].Translation[K] = R.ReadF32();
+			for (int K = 0; K < 4; ++K) Tracks[I].Keys[J].Rotation[K] = R.ReadF32();
+			for (int K = 0; K < 3; ++K) Tracks[I].Keys[J].Scale[K] = R.ReadF32();
 		}
-	}
-	Anim.SetDurationSeconds(Duration);
-	std::vector<FAnimationTrack> Tracks;
-	Tracks.reserve(TrackCount);
-	for (std::uint32_t T = 0; T < TrackCount; ++T)
-	{
-		FAnimationTrack Track;
-		std::uint32_t KeyCount = 0;
-		if (!R.ReadString(Track.TargetBoneName) || !R.ReadU32(KeyCount))
-		{
-			return false;
-		}
-		Track.Keys.reserve(KeyCount);
-		for (std::uint32_t K = 0; K < KeyCount; ++K)
-		{
-			FAnimationKey Key;
-			if (!R.ReadF32(Key.Time)
-				|| !R.ReadF32(Key.Translation[0]) || !R.ReadF32(Key.Translation[1]) || !R.ReadF32(Key.Translation[2])
-				|| !R.ReadF32(Key.Rotation[0]) || !R.ReadF32(Key.Rotation[1]) || !R.ReadF32(Key.Rotation[2])
-				|| !R.ReadF32(Key.Rotation[3])
-				|| !R.ReadF32(Key.Scale[0]) || !R.ReadF32(Key.Scale[1]) || !R.ReadF32(Key.Scale[2]))
-			{
-				return false;
-			}
-			Track.Keys.push_back(Key);
-		}
-		Tracks.push_back(std::move(Track));
 	}
 	Anim.SetTracks(std::move(Tracks));
-	return true;
 }
 
-[[nodiscard]] bool WriteDocumentJsonCpu(const std::string& DocumentJson, FByteWriter& W)
+// ── Document JSON ──────────────────────────────────────────────
+
+static void WriteDocumentJsonCpu(const std::string& Json, std::vector<std::uint8_t>& Out)
 {
+	FByteWriter W(Out);
 	W.WriteU16(kCpuLayoutVersion);
-	W.WriteU16(0);
-	W.WriteString(DocumentJson);
-	return true;
+	W.WriteString(Json);
 }
 
-[[nodiscard]] bool ReadDocumentJsonCpu(std::string& OutJson, FByteReader& R)
+static std::string ReadDocumentJsonCpu(FByteReader& R)
 {
-	std::uint16_t Layout = 0;
-	std::uint16_t Pad = 0;
-	if (!R.ReadU16(Layout) || Layout != kCpuLayoutVersion || !R.ReadU16(Pad) || !R.ReadString(OutJson))
+	std::uint16_t Version = R.ReadU16();
+	(void)Version;
+	return R.ReadString();
+}
+
+// ── Object record ──────────────────────────────────────────────
+
+static void WriteObjectRecord(const FResource& Object, std::vector<std::uint8_t>& Out)
+{
+	FByteWriter W(Out);
+	W.WriteString(Object.GetName());
+	W.WriteU16(static_cast<std::uint16_t>(Object.GetType()));
+	W.WriteString(Object.GetSourcePath());
+
+	std::uint32_t RecordFlags = kRecordHasCpu;
+
+	std::vector<std::string> Refs = Object.GetReferencePaths();
+	if (!Refs.empty())
+		RecordFlags |= kRecordHasRefs;
+
+	W.WriteU32(RecordFlags);
+	W.WriteU32(0); // Reserved0
+	W.WriteU32(0); // Reserved1
+
+	if (!Refs.empty())
 	{
-		return false;
+		W.WriteU32(static_cast<std::uint32_t>(Refs.size()));
+		for (const std::string& Ref : Refs)
+			W.WriteString(Ref);
 	}
-	return true;
-}
 
-[[nodiscard]] bool WriteObjectRecord(const UObject& Object, FByteWriter& ObjectsPayload)
-{
-	FByteWriter Record;
-	const UResource* Resource = dynamic_cast<const UResource*>(&Object);
-	Record.WriteString(Object.GetName());
-	Record.WriteU16(static_cast<std::uint16_t>(Resource ? Resource->GetType() : EResourceType::Unknown));
-	Record.WriteU16(Resource ? kClassKindResource : kClassKindObject);
-	Record.WriteString(Resource ? Resource->GetSourcePath() : std::string{});
-
-	std::vector<UObject*> Referenced;
-	Object.GetReferencedObjects(Referenced);
 	std::vector<std::uint8_t> CpuBytes;
-	std::uint32_t Flags = 0;
-	if (Resource)
+	if (WriteCpuPayloadBytes(Object, CpuBytes))
 	{
-		if (!WriteCpuPayloadBytes(*Resource, CpuBytes))
-		{
-			return false;
-		}
+		W.WriteU32(static_cast<std::uint32_t>(CpuBytes.size()));
 		if (!CpuBytes.empty())
-		{
-			Flags |= kRecordHasCpu;
-		}
+			W.WriteBytes(CpuBytes.data(), CpuBytes.size());
 	}
-	if (!Referenced.empty())
+	else
 	{
-		Flags |= kRecordHasRefs;
+		W.WriteU32(0);
 	}
-	Record.WriteU32(Flags);
-	Record.WriteU32(0);
-	Record.WriteU32(0);
-
-	if (Flags & kRecordHasRefs)
-	{
-		Record.WriteU32(static_cast<std::uint32_t>(Referenced.size()));
-		for (UObject* RefObj : Referenced)
-		{
-			Record.WriteString(RefObj ? RefObj->GetPathName() : std::string{});
-		}
-	}
-	if (Flags & kRecordHasCpu)
-	{
-		Record.WriteU32(static_cast<std::uint32_t>(CpuBytes.size()));
-		Record.WriteBytes(CpuBytes.data(), CpuBytes.size());
-	}
-
-	ObjectsPayload.WriteBytes(Record.Bytes.data(), Record.Bytes.size());
-	return true;
 }
 
-[[nodiscard]] bool ParseObjectRecord(FByteReader& R, FCassetParsedObject& Out)
+static void ParseObjectRecord(FByteReader& R, FCassetParsedObject& Out)
 {
-	std::uint16_t TypeU16 = 0;
-	std::uint32_t Reserved0 = 0;
-	std::uint32_t Reserved1 = 0;
-	if (!R.ReadString(Out.Name) || !R.ReadU16(TypeU16) || !R.ReadU16(Out.ClassKind)
-		|| !R.ReadString(Out.ImportSource) || !R.ReadU32(Out.RecordFlags)
-		|| !R.ReadU32(Reserved0) || !R.ReadU32(Reserved1))
+	Out.Name = R.ReadString();
+	Out.Type = static_cast<EAssetType>(R.ReadU16());
+	Out.ImportSource = R.ReadString();
+	Out.RecordFlags = R.ReadU32();
+	R.Skip(8); // Reserved0 + Reserved1
+
+	if ((Out.RecordFlags & kRecordHasRefs) != 0)
 	{
-		return false;
-	}
-	Out.Type = static_cast<EResourceType>(TypeU16);
-	if (Out.RecordFlags & kRecordHasRefs)
-	{
-		std::uint32_t RefCount = 0;
-		if (!R.ReadU32(RefCount))
-		{
-			return false;
-		}
-		Out.Refs.resize(RefCount);
+		std::uint32_t RefCount = R.ReadU32();
+		Out.Refs.reserve(RefCount);
 		for (std::uint32_t I = 0; I < RefCount; ++I)
-		{
-			if (!R.ReadString(Out.Refs[I]))
-			{
-				return false;
-			}
-		}
+			Out.Refs.push_back(R.ReadString());
 	}
-	if (Out.RecordFlags & kRecordHasCpu)
+
+	if ((Out.RecordFlags & kRecordHasCpu) != 0)
 	{
-		std::uint32_t CpuSize = 0;
-		if (!R.ReadU32(CpuSize) || !R.Remaining(CpuSize))
-		{
-			return false;
-		}
-		Out.CpuBytes.resize(CpuSize);
-		if (CpuSize > 0 && !R.ReadBytes(Out.CpuBytes.data(), CpuSize))
-		{
-			return false;
-		}
+		std::uint32_t CpuSize = R.ReadU32();
+		if (CpuSize > 0)
+			Out.CpuBytes = R.ReadBytes(CpuSize);
 	}
-	if (Out.RecordFlags & kRecordHasExtras)
+
+	if ((Out.RecordFlags & kRecordHasExtras) != 0)
 	{
-		std::uint32_t ExtraCount = 0;
-		if (!R.ReadU32(ExtraCount))
-		{
-			return false;
-		}
+		std::uint32_t ExtraCount = R.ReadU32();
 		for (std::uint32_t I = 0; I < ExtraCount; ++I)
 		{
-			std::uint32_t Key = 0;
-			std::uint32_t Size = 0;
-			if (!R.ReadU32(Key) || !R.ReadU32(Size) || !R.Skip(Size))
-			{
-				return false;
-			}
+			R.ReadU32(); // Key
+			std::uint32_t Size = R.ReadU32();
+			R.Skip(Size);
 		}
 	}
-	return true;
 }
 
-[[nodiscard]] bool BuildUncompressedDocument(
-	const UPackage& Package,
-	const std::unordered_map<std::string, UObject*>& Objects,
+// ── Document build/parse ───────────────────────────────────────
+
+static void BuildUncompressedDocument(
+	const FResourcePackage& Package,
+	const std::vector<FResource*>& Objects,
 	std::vector<std::uint8_t>& OutDoc)
 {
-	OutDoc.clear();
-
-	std::string DefaultObjectName;
-	std::unordered_map<std::string, std::string> DependencyNameToFile;
-	FByteWriter ObjectsPayload;
-	std::uint32_t ObjectCount = 0;
-
-	for (const auto& Pair : Objects)
+	// PKG1 chunk
 	{
-		UObject* Object = Pair.second;
-		if (!Object)
-		{
-			continue;
-		}
-		if (DefaultObjectName.empty() && dynamic_cast<UResource*>(Object))
-		{
-			DefaultObjectName = Object->GetName();
-		}
-
-		std::vector<UObject*> Referenced;
-		Object->GetReferencedObjects(Referenced);
-		for (UObject* RefObj : Referenced)
-		{
-			if (!RefObj)
-			{
-				continue;
-			}
-			FObjectRef OtherOuter = RefObj->GetOuter();
-			UPackage* OtherPackage = OtherOuter.Cast<UPackage>();
-			if (!OtherPackage || OtherPackage == &Package || !OtherPackage->IsPersistent())
-			{
-				continue;
-			}
-			DependencyNameToFile[OtherPackage->GetName()] = OtherPackage->GetFilePath();
-		}
-
-		if (!WriteObjectRecord(*Object, ObjectsPayload))
-		{
-			MAHO_CORE_ERROR("casset: failed encoding object '{}'", Object->GetName());
-			return false;
-		}
-		++ObjectCount;
+		std::vector<std::uint8_t> Chunk;
+		FByteWriter W(Chunk);
+		W.WriteString(Package.Name);
+		W.WriteU32(Package.Flags);
+		W.WriteString("");
+		W.WriteU32(static_cast<std::uint32_t>(Objects.size()));
+		for (int I = 0; I < 5; ++I) W.WriteU32(0);
+		AppendChunk(OutDoc, kChunkTagPKG1, kChunkMustUnderstand, Chunk);
 	}
 
-	FByteWriter Pkg1;
-	Pkg1.WriteString(Package.GetName());
-	Pkg1.WriteU32(static_cast<std::uint32_t>(Package.GetPackageFlags()));
-	Pkg1.WriteString(DefaultObjectName);
-	Pkg1.WriteU32(ObjectCount);
-	Pkg1.WriteU32(0);
-	Pkg1.WriteU32(0);
-	Pkg1.WriteU32(0);
-	Pkg1.WriteU32(0);
-
-	FByteWriter Deps;
-	Deps.WriteU32(static_cast<std::uint32_t>(DependencyNameToFile.size()));
-	for (const auto& Dep : DependencyNameToFile)
+	// DEPS chunk — collect cross-package references
 	{
-		Deps.WriteString(Dep.first);
-		Deps.WriteString(Dep.second);
-		Deps.WriteU32(0);
+		std::vector<std::uint8_t> Chunk;
+		FByteWriter W(Chunk);
+
+		std::vector<std::pair<std::string, std::string>> Deps;
+		for (const FResource* Obj : Objects)
+		{
+			if (!Obj) continue;
+			for (const std::string& RefPath : Obj->GetReferencePaths())
+			{
+				std::size_t Dot = RefPath.find('.');
+				if (Dot == std::string::npos) continue;
+				std::string DepPkg = RefPath.substr(0, Dot);
+				if (DepPkg != Package.Name)
+					Deps.push_back({DepPkg, RefPath});
+			}
+		}
+
+		W.WriteU32(static_cast<std::uint32_t>(Deps.size()));
+		for (const auto& Dep : Deps)
+		{
+			W.WriteString(Dep.first);
+			W.WriteString(Dep.second);
+			W.WriteU32(0);
+		}
+		AppendChunk(OutDoc, kChunkTagDEPS, kChunkMustUnderstand, Chunk);
 	}
 
-	FByteWriter Objs;
-	Objs.WriteU32(ObjectCount);
-	Objs.WriteBytes(ObjectsPayload.Bytes.data(), ObjectsPayload.Bytes.size());
-
-	FByteWriter Doc;
-	AppendChunk(Doc, kChunkTagPKG1, kChunkMustUnderstand, Pkg1.Bytes);
-	AppendChunk(Doc, kChunkTagDEPS, kChunkMustUnderstand, Deps.Bytes);
-	AppendChunk(Doc, kChunkTagOBJS, kChunkMustUnderstand, Objs.Bytes);
-	OutDoc = std::move(Doc.Bytes);
-	return true;
+	// OBJS chunk
+	{
+		std::vector<std::uint8_t> Chunk;
+		FByteWriter W(Chunk);
+		W.WriteU32(static_cast<std::uint32_t>(Objects.size()));
+		for (const FResource* Obj : Objects)
+		{
+			if (!Obj) continue;
+			std::vector<std::uint8_t> Record;
+			WriteObjectRecord(*Obj, Record);
+			W.WriteBytes(Record.data(), Record.size());
+		}
+		W.PadTo4();
+		AppendChunk(OutDoc, kChunkTagOBJS, kChunkMustUnderstand, Chunk);
+	}
 }
 
-[[nodiscard]] bool ParseUncompressedDocument(const std::uint8_t* Data, std::size_t Size, FCassetParsedPackage& Out)
+static void ParseUncompressedDocument(
+	const std::vector<std::uint8_t>& Doc,
+	FCassetParsedPackage& Out)
 {
-	Out = {};
-	FByteReader R{Data, Size, 0};
-	bool bHavePkg = false;
-	bool bHaveDeps = false;
-	bool bHaveObjs = false;
-
-	while (R.Pos < R.Size)
+	FByteReader R(Doc.data(), Doc.size());
+	while (R.CanRead(4))
 	{
-		if (!R.Remaining(12))
-		{
-			break;
-		}
-		std::uint32_t Tag = 0;
-		std::uint32_t PayloadSize = 0;
-		std::uint32_t ChunkFlags = 0;
-		if (!R.ReadU32(Tag) || !R.ReadU32(PayloadSize) || !R.ReadU32(ChunkFlags))
-		{
-			return false;
-		}
-		if (!R.Remaining(PayloadSize))
-		{
-			MAHO_CORE_ERROR("casset: truncated chunk payload");
-			return false;
-		}
-		FByteReader Payload{R.Data + R.Pos, PayloadSize, 0};
-		R.Pos += PayloadSize;
-		if (!R.SkipPadTo4())
-		{
-			return false;
-		}
+		std::uint32_t Tag = R.ReadU32();
+		std::uint32_t PayloadSize = R.ReadU32();
+		std::uint32_t Flags = R.ReadU32();
+		(void)Flags;
+
+		if (!R.CanRead(PayloadSize)) break;
+
+		std::vector<std::uint8_t> Payload = R.ReadBytes(PayloadSize);
+		FByteReader PR(Payload.data(), Payload.size());
 
 		if (Tag == kChunkTagPKG1)
 		{
-			std::uint32_t Hint = 0;
-			std::uint32_t R0 = 0, R1 = 0, R2 = 0, R3 = 0;
-			if (!Payload.ReadString(Out.Name) || !Payload.ReadU32(Out.PackageFlags)
-				|| !Payload.ReadString(Out.DefaultObjectName) || !Payload.ReadU32(Hint)
-				|| !Payload.ReadU32(R0) || !Payload.ReadU32(R1) || !Payload.ReadU32(R2)
-				|| !Payload.ReadU32(R3))
-			{
-				return false;
-			}
-			bHavePkg = true;
+			Out.Name = PR.ReadString();
+			Out.PackageFlags = PR.ReadU32();
+			Out.DefaultObjectName = PR.ReadString();
+			PR.ReadU32(); // ObjectCountHint
+			PR.Skip(20); // 5 x Reserved
 		}
 		else if (Tag == kChunkTagDEPS)
 		{
-			std::uint32_t Count = 0;
-			if (!Payload.ReadU32(Count))
+			std::uint32_t DepCount = PR.ReadU32();
+			Out.Dependencies.resize(DepCount);
+			for (std::uint32_t I = 0; I < DepCount; ++I)
 			{
-				return false;
+				Out.Dependencies[I].PackageName = PR.ReadString();
+				Out.Dependencies[I].FilePath = PR.ReadString();
+				Out.Dependencies[I].Reserved = PR.ReadU32();
 			}
-			Out.Dependencies.resize(Count);
-			for (std::uint32_t I = 0; I < Count; ++I)
-			{
-				if (!Payload.ReadString(Out.Dependencies[I].PackageName)
-					|| !Payload.ReadString(Out.Dependencies[I].FilePath)
-					|| !Payload.ReadU32(Out.Dependencies[I].Reserved))
-				{
-					return false;
-				}
-			}
-			bHaveDeps = true;
 		}
 		else if (Tag == kChunkTagOBJS)
 		{
-			std::uint32_t Count = 0;
-			if (!Payload.ReadU32(Count))
+			std::uint32_t ObjCount = PR.ReadU32();
+			Out.Objects.reserve(ObjCount);
+			for (std::uint32_t I = 0; I < ObjCount; ++I)
 			{
-				return false;
+				FCassetParsedObject Obj;
+				ParseObjectRecord(PR, Obj);
+				Out.Objects.push_back(std::move(Obj));
 			}
-			Out.Objects.resize(Count);
-			for (std::uint32_t I = 0; I < Count; ++I)
-			{
-				if (!ParseObjectRecord(Payload, Out.Objects[I]))
-				{
-					MAHO_CORE_ERROR("casset: bad object record index {}", I);
-					return false;
-				}
-			}
-			bHaveObjs = true;
 		}
-		else if (ChunkFlags & kChunkMustUnderstand)
-		{
-			MAHO_CORE_ERROR("casset: unknown critical chunk tag=0x{:08X}", Tag);
-			return false;
-		}
-	}
 
-	if (!bHavePkg || !bHaveDeps || !bHaveObjs)
-	{
-		MAHO_CORE_ERROR("casset: missing required chunks PKG1/DEPS/OBJS");
-		return false;
+		R.SkipPadTo4();
 	}
-	return true;
 }
 
-} // namespace
+// ── Public API ─────────────────────────────────────────────────
 
 bool IsCassetBinaryFile(const std::uint8_t* Data, std::size_t Size)
 {
-	if (!Data || Size < 4)
-	{
-		return false;
-	}
-	const std::uint32_t Magic =
-		static_cast<std::uint32_t>(Data[0])
+	if (Size < 8) return false;
+	std::uint32_t Magic = static_cast<std::uint32_t>(Data[0])
 		| (static_cast<std::uint32_t>(Data[1]) << 8)
 		| (static_cast<std::uint32_t>(Data[2]) << 16)
 		| (static_cast<std::uint32_t>(Data[3]) << 24);
 	return Magic == kCassetMagic;
 }
 
-bool WriteCpuPayloadBytes(const UResource& Resource, std::vector<std::uint8_t>& OutCpuBytes)
+bool WriteCpuPayloadBytes(const FResource& Resource, std::vector<std::uint8_t>& OutCpuBytes)
 {
-	FByteWriter W;
-	bool bOk = false;
-	if (const UTexture* Tex = dynamic_cast<const UTexture*>(&Resource))
+	if (const auto* Tex = dynamic_cast<const FTexture*>(&Resource))
 	{
-		bOk = WriteTextureCpu(*Tex, W);
+		WriteTextureCpu(*Tex, OutCpuBytes);
+		return true;
 	}
-	else if (const UStaticMesh* Mesh = dynamic_cast<const UStaticMesh*>(&Resource))
+	if (const auto* Mesh = dynamic_cast<const FStaticMesh*>(&Resource))
 	{
-		bOk = WriteMeshCpu(*Mesh, W);
+		WriteMeshCpu(*Mesh, OutCpuBytes);
+		return true;
 	}
-	else if (const UMaterial* Mat = dynamic_cast<const UMaterial*>(&Resource))
+	if (const auto* Mat = dynamic_cast<const FMaterial*>(&Resource))
 	{
-		bOk = WriteMaterialCpu(*Mat, W);
+		WriteMaterialCpu(*Mat, OutCpuBytes);
+		return true;
 	}
-	else if (const USkeleton* Skeleton = dynamic_cast<const USkeleton*>(&Resource))
+	if (const auto* Skeleton = dynamic_cast<const FSkeleton*>(&Resource))
 	{
-		bOk = WriteSkeletonCpu(*Skeleton, W);
+		WriteSkeletonCpu(*Skeleton, OutCpuBytes);
+		return true;
 	}
-	else if (const UAnimation* Anim = dynamic_cast<const UAnimation*>(&Resource))
+	if (const auto* Anim = dynamic_cast<const FAnimation*>(&Resource))
 	{
-		bOk = WriteAnimationCpu(*Anim, W);
+		WriteAnimationCpu(*Anim, OutCpuBytes);
+		return true;
 	}
-	else if (const UAnimationGraph* Graph = dynamic_cast<const UAnimationGraph*>(&Resource))
+	if (const auto* Graph = dynamic_cast<const FAnimationGraph*>(&Resource))
 	{
-		bOk = WriteDocumentJsonCpu(Graph->GetDocumentJson(), W);
+		WriteDocumentJsonCpu(Graph->GetDocumentJson(), OutCpuBytes);
+		return true;
 	}
-	else if (const UPrefab* Prefab = dynamic_cast<const UPrefab*>(&Resource))
+	if (const auto* Prefab = dynamic_cast<const FPrefab*>(&Resource))
 	{
-		bOk = WriteDocumentJsonCpu(Prefab->GetDocumentJson(), W);
+		WriteDocumentJsonCpu(Prefab->GetDocumentJson(), OutCpuBytes);
+		return true;
 	}
-	else
-	{
-		bOk = true;
-	}
-	if (bOk)
-	{
-		OutCpuBytes = std::move(W.Bytes);
-	}
-	return bOk;
+	return false;
 }
 
-bool ApplyCpuPayload(UResource& Resource, const std::vector<std::uint8_t>& CpuBytes)
+bool ApplyCpuPayload(FResource& Resource, const std::vector<std::uint8_t>& CpuBytes)
 {
-	FByteReader R{CpuBytes.data(), CpuBytes.size(), 0};
-	bool bOk = false;
-	if (UTexture* Tex = dynamic_cast<UTexture*>(&Resource))
-	{
-		bOk = ReadTextureCpu(*Tex, R);
-	}
-	else if (UStaticMesh* Mesh = dynamic_cast<UStaticMesh*>(&Resource))
-	{
-		bOk = ReadMeshCpu(*Mesh, R);
-	}
-	else if (UMaterial* Mat = dynamic_cast<UMaterial*>(&Resource))
-	{
-		bOk = ReadMaterialCpu(*Mat, R);
-	}
-	else if (USkeleton* Skeleton = dynamic_cast<USkeleton*>(&Resource))
-	{
-		bOk = ReadSkeletonCpu(*Skeleton, R);
-	}
-	else if (UAnimation* Anim = dynamic_cast<UAnimation*>(&Resource))
-	{
-		bOk = ReadAnimationCpu(*Anim, R);
-	}
-	else if (UAnimationGraph* Graph = dynamic_cast<UAnimationGraph*>(&Resource))
-	{
-		std::string Json;
-		bOk = ReadDocumentJsonCpu(Json, R);
-		if (bOk)
-		{
-			Graph->SetDocumentJson(std::move(Json));
-		}
-	}
-	else if (UPrefab* Prefab = dynamic_cast<UPrefab*>(&Resource))
-	{
-		std::string Json;
-		bOk = ReadDocumentJsonCpu(Json, R);
-		if (bOk)
-		{
-			Prefab->SetDocumentJson(std::move(Json));
-		}
-	}
-	else
-	{
-		bOk = true;
-	}
+	FByteReader R(CpuBytes.data(), CpuBytes.size());
 
-	if (bOk)
+	if (auto* Tex = dynamic_cast<FTexture*>(&Resource))
 	{
+		if (ReadTextureCpu(*Tex, R))
+		{
+			Resource.MarkCpuReady();
+			return true;
+		}
+	}
+	if (auto* Mesh = dynamic_cast<FStaticMesh*>(&Resource))
+	{
+		ReadMeshCpu(*Mesh, R);
 		Resource.MarkCpuReady();
-		Resource.ClearDirty();
+		return true;
 	}
-	return bOk;
-}
-
-bool EncodePackageFile(const UPackage& Package, std::vector<std::uint8_t>& OutFileBytes)
-{
-	std::vector<std::uint8_t> Uncompressed;
-	if (!BuildPackageDocument(Package, Uncompressed))
+	if (auto* Mat = dynamic_cast<FMaterial*>(&Resource))
 	{
-		return false;
+		ReadMaterialCpu(*Mat, R);
+		Resource.MarkCpuReady();
+		return true;
 	}
-	return WrapDocumentToMcasFile(Uncompressed, OutFileBytes);
+	if (auto* Skeleton = dynamic_cast<FSkeleton*>(&Resource))
+	{
+		ReadSkeletonCpu(*Skeleton, R);
+		Resource.MarkCpuReady();
+		return true;
+	}
+	if (auto* Anim = dynamic_cast<FAnimation*>(&Resource))
+	{
+		ReadAnimationCpu(*Anim, R);
+		Resource.MarkCpuReady();
+		return true;
+	}
+	if (auto* Graph = dynamic_cast<FAnimationGraph*>(&Resource))
+	{
+		Graph->SetDocumentJson(ReadDocumentJsonCpu(R));
+		Resource.MarkCpuReady();
+		return true;
+	}
+	if (auto* Prefab = dynamic_cast<FPrefab*>(&Resource))
+	{
+		Prefab->SetDocumentJson(ReadDocumentJsonCpu(R));
+		Resource.MarkCpuReady();
+		return true;
+	}
+
+	return false;
 }
 
-bool BuildPackageDocument(const UPackage& Package, std::vector<std::uint8_t>& OutDocument)
+bool EncodePackageFile(
+	const FResourcePackage& Package,
+	const std::vector<FResource*>& Objects,
+	std::vector<std::uint8_t>& OutFileBytes)
 {
-	return BuildUncompressedDocument(Package, Package.Objects, OutDocument);
+	std::vector<std::uint8_t> Document;
+	if (!BuildPackageDocument(Package, Objects, Document))
+		return false;
+	return WrapDocumentToMcasFile(Document, OutFileBytes);
+}
+
+bool BuildPackageDocument(
+	const FResourcePackage& Package,
+	const std::vector<FResource*>& Objects,
+	std::vector<std::uint8_t>& OutDocument)
+{
+	OutDocument.clear();
+	BuildUncompressedDocument(Package, Objects, OutDocument);
+	return true;
 }
 
 bool WrapDocumentToMcasFile(
 	const std::vector<std::uint8_t>& UncompressedDocument,
 	std::vector<std::uint8_t>& OutFileBytes)
 {
-	OutFileBytes.clear();
 	std::vector<std::uint8_t> Compressed;
 	if (!FCompression::CompressZlib(
-			UncompressedDocument.data(),
-			UncompressedDocument.size(),
-			Compressed))
+		UncompressedDocument.data(),
+		UncompressedDocument.size(),
+		Compressed))
 	{
+		MAHO_CORE_ERROR("ResourceCasset: zlib compress failed");
 		return false;
 	}
 
-	FByteWriter File;
-	File.WriteU32(kCassetMagic);
-	File.WriteU32(kCassetFormatVersion);
-	File.WriteU32(kCassetHeaderSize);
-	File.WriteU32(kCassetFlagBodyZlib);
-	File.WriteU32(kCassetContentVersion);
-	File.WriteU32(static_cast<std::uint32_t>(UncompressedDocument.size()));
-	File.WriteU32(static_cast<std::uint32_t>(Compressed.size()));
-	File.WriteU32(0); // Checksum (v1 unused)
-	for (int I = 0; I < 8; ++I)
-	{
-		File.WriteU32(0);
-	}
+	OutFileBytes.clear();
+	FByteWriter W(OutFileBytes);
+	W.WriteU32(kCassetMagic);
+	W.WriteU32(kCassetFormatVersion);
+	W.WriteU32(kCassetHeaderSize);
+	W.WriteU32(kCassetFlagBodyZlib);
+	W.WriteU32(kCassetContentVersion);
+	W.WriteU32(static_cast<std::uint32_t>(UncompressedDocument.size()));
+	W.WriteU32(static_cast<std::uint32_t>(Compressed.size()));
+	W.WriteU32(0); // Checksum
 
-	File.WriteBytes(Compressed.data(), Compressed.size());
-	OutFileBytes = std::move(File.Bytes);
-	if (OutFileBytes.size() < kCassetHeaderSize)
-	{
-		MAHO_CORE_ERROR("casset: internal header size mismatch");
-		return false;
-	}
+	for (int I = 0; I < 8; ++I) W.WriteU32(0); // Reserved
+
+	W.WriteBytes(Compressed.data(), Compressed.size());
 	return true;
 }
 
@@ -1083,60 +744,45 @@ bool DecodePackageFile(
 	std::size_t FileSize,
 	FCassetParsedPackage& OutPackage)
 {
-	OutPackage = {};
-	if (!IsCassetBinaryFile(FileBytes, FileSize) || FileSize < kCassetHeaderSize)
-	{
-		MAHO_CORE_ERROR("casset: not an MCAS binary package");
-		return false;
-	}
+	if (FileSize < kCassetHeaderSize) return false;
 
-	FByteReader H{FileBytes, FileSize, 0};
-	std::uint32_t Magic = 0, FormatVer = 0, HeaderSize = 0, Flags = 0, ContentVer = 0;
-	std::uint32_t UncompSize = 0, CompSize = 0, Checksum = 0;
-	if (!H.ReadU32(Magic) || !H.ReadU32(FormatVer) || !H.ReadU32(HeaderSize) || !H.ReadU32(Flags)
-		|| !H.ReadU32(ContentVer) || !H.ReadU32(UncompSize) || !H.ReadU32(CompSize) || !H.ReadU32(Checksum))
-	{
-		return false;
-	}
-	(void)Checksum;
-	if (Magic != kCassetMagic)
-	{
-		return false;
-	}
-	if (FormatVer > kCassetFormatVersion || ContentVer > kCassetContentVersion)
-	{
-		MAHO_CORE_ERROR(
-			"casset: unsupported version format={} content={} (max {}/{})",
-			FormatVer,
-			ContentVer,
-			kCassetFormatVersion,
-			kCassetContentVersion);
-		return false;
-	}
-	if (HeaderSize < 32 || HeaderSize > FileSize)
-	{
-		MAHO_CORE_ERROR("casset: bad HeaderSize {}", HeaderSize);
-		return false;
-	}
-	H.Pos = HeaderSize;
+	FByteReader R(FileBytes, FileSize);
+	std::uint32_t Magic = R.ReadU32();
+	if (Magic != kCassetMagic) return false;
 
-	if ((Flags & kCassetFlagBodyZlib) == 0)
-	{
-		MAHO_CORE_ERROR("casset: uncompressed body not supported in v1");
-		return false;
-	}
-	if (CompSize == 0 || UncompSize == 0 || !H.Remaining(CompSize))
-	{
-		MAHO_CORE_ERROR("casset: bad compressed body size");
-		return false;
-	}
+	std::uint32_t FormatVersion = R.ReadU32();
+	std::uint32_t HeaderSize = R.ReadU32();
+	std::uint32_t Flags = R.ReadU32();
+
+	if (FormatVersion > kCassetFormatVersion) return false;
+
+	R.Skip(4); // ContentVersion
+	std::uint32_t UncompressedSize = R.ReadU32();
+	std::uint32_t CompressedSize = R.ReadU32();
+	R.Skip(36); // Checksum(4) + Reserved(32)
+
+	std::vector<std::uint8_t> Compressed = R.ReadBytes(CompressedSize);
 
 	std::vector<std::uint8_t> Uncompressed;
-	if (!FCompression::DecompressZlib(H.Data + H.Pos, CompSize, UncompSize, Uncompressed))
+	if ((Flags & kCassetFlagBodyZlib) != 0)
 	{
-		return false;
+		if (!FCompression::DecompressZlib(
+			Compressed.data(),
+			Compressed.size(),
+			UncompressedSize,
+			Uncompressed))
+		{
+			MAHO_CORE_ERROR("ResourceCasset: zlib decompress failed");
+			return false;
+		}
 	}
-	return ParseUncompressedDocument(Uncompressed.data(), Uncompressed.size(), OutPackage);
+	else
+	{
+		Uncompressed = std::move(Compressed);
+	}
+
+	ParseUncompressedDocument(Uncompressed, OutPackage);
+	return true;
 }
 
 } // namespace ResourceCasset

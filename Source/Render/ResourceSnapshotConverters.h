@@ -5,14 +5,14 @@
 namespace Maho
 {
 
-class UTexture;
-class UStaticMesh;
-class USkeleton;
-class UAnimation;
+class FTexture;
+class FStaticMesh;
+class FSkeleton;
+class FAnimation;
 
-[[nodiscard]] bool TryBuildTextureCpuSnapshot(const UTexture& Texture, FTextureCpuSnapshot& Out);
-[[nodiscard]] bool TryBuildMeshCpuSnapshot(const UStaticMesh& Mesh, FMeshCpuSnapshot& Out);
-[[nodiscard]] bool TryBuildSkeletonCpuSnapshot(const USkeleton& Skeleton, FSkeletonCpuSnapshot& Out);
-[[nodiscard]] bool TryBuildAnimationCpuSnapshot(const UAnimation& Animation, FAnimationCpuSnapshot& Out);
+[[nodiscard]] bool TryBuildTextureCpuSnapshot(const FTexture& Texture, FTextureCpuSnapshot& Out);
+[[nodiscard]] bool TryBuildMeshCpuSnapshot(const FStaticMesh& Mesh, FMeshCpuSnapshot& Out);
+[[nodiscard]] bool TryBuildSkeletonCpuSnapshot(const FSkeleton& Skeleton, FSkeletonCpuSnapshot& Out);
+[[nodiscard]] bool TryBuildAnimationCpuSnapshot(const FAnimation& Animation, FAnimationCpuSnapshot& Out);
 
 } // namespace Maho

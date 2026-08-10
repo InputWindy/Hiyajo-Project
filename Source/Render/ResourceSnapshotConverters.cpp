@@ -1,5 +1,4 @@
 ﻿#include "Game/System/Resource/ResourceSystem.h"
-#include "Game/Object/Object.h"
 #include <Render/ResourceSnapshots.h>
 #include <Render/TextureRenderProxy.h>
 #include <Render/MeshRenderProxy.h>
@@ -9,10 +8,10 @@
 namespace Maho
 {
 
-// Moved from engine TextureRenderProxy.cpp — needs UTexture internals
-bool TryBuildTextureCpuSnapshot(const UTexture& Texture, FTextureCpuSnapshot& Out)
+// Moved from engine TextureRenderProxy.cpp — needs FTexture internals
+bool TryBuildTextureCpuSnapshot(const FTexture& Texture, FTextureCpuSnapshot& Out)
 {
-	Out.CatalogKey = Texture.GetPath();
+	Out.CatalogKey = Texture.GetSourcePath();
 	Out.Dimension = Texture.GetDimension();
 	Out.PixelFormat = Texture.GetPixelFormat();
 	Out.Width = Texture.GetWidth();
@@ -25,23 +24,23 @@ bool TryBuildTextureCpuSnapshot(const UTexture& Texture, FTextureCpuSnapshot& Ou
 	return true;
 }
 
-bool TryBuildMeshCpuSnapshot(const UStaticMesh& Mesh, FMeshCpuSnapshot& Out)
+bool TryBuildMeshCpuSnapshot(const FStaticMesh& Mesh, FMeshCpuSnapshot& Out)
 {
-	Out.CatalogKey = Mesh.GetPath();
+	Out.CatalogKey = Mesh.GetSourcePath();
 	// Mesh CpuSnapshot not yet fully implemented — stub
 	return true;
 }
 
-bool TryBuildSkeletonCpuSnapshot(const USkeleton& Skeleton, FSkeletonCpuSnapshot& Out)
+bool TryBuildSkeletonCpuSnapshot(const FSkeleton& Skeleton, FSkeletonCpuSnapshot& Out)
 {
-	Out.CatalogKey = Skeleton.GetPath();
+	Out.CatalogKey = Skeleton.GetSourcePath();
 	// Skeleton CpuSnapshot not yet fully implemented — stub
 	return true;
 }
 
-bool TryBuildAnimationCpuSnapshot(const UAnimation& Animation, FAnimationCpuSnapshot& Out)
+bool TryBuildAnimationCpuSnapshot(const FAnimation& Animation, FAnimationCpuSnapshot& Out)
 {
-	Out.CatalogKey = Animation.GetPath();
+	Out.CatalogKey = Animation.GetSourcePath();
 	// Animation CpuSnapshot not yet fully implemented — stub
 	return true;
 }
