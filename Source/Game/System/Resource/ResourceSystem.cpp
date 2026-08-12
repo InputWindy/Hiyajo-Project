@@ -114,7 +114,7 @@ FResourcePackage* FResourceSystem::FindOrCreatePackage(const std::string& Packag
 	return Raw;
 }
 
-bool FResourceSystem::RegisterResource(std::unique_ptr<FResource> Resource, const std::string& PackagePath)
+bool FResourceSystem::RegisterResource(Ref<FResource> Resource, const std::string& PackagePath)
 {
 	if (!bAcceptingNewWork)
 	{
@@ -137,7 +137,7 @@ bool FResourceSystem::RegisterResource(std::unique_ptr<FResource> Resource, cons
 	}
 
 	FResourcePackage* Pkg = FindOrCreatePackage(PkgPath);
-	Pkg->Objects.push_back(Resource.get());
+	Pkg->Objects.push_back(Resource.Get());
 	Catalog[Key] = std::move(Resource);
 	return true;
 }
@@ -163,7 +163,7 @@ bool FResourceSystem::UnregisterResource(FResource* Resource)
 
 	for (auto It = Catalog.begin(); It != Catalog.end(); ++It)
 	{
-		if (It->second.get() == Resource)
+		if (It->second.Get() == Resource)
 		{
 			Catalog.erase(It);
 			return true;
@@ -723,7 +723,7 @@ template <typename TResource>
 {
 	auto Res = std::make_unique<TResource>(ObjectName, Type, ImportSource);
 	TResource* Raw = Res.get();
-	Manager.RegisterResource(std::move(Res), PackagePath);
+	Manager.RegisterResource(Ref<FResource>(Res.release()), PackagePath);
 	return Raw;
 }
 
@@ -862,7 +862,7 @@ EAssetLoadState FResourceSystem::GetLoadState(const std::string& AssetPath) cons
 	if (AssetPath.empty()) return EAssetLoadState::Invalid;
 
 	const std::string Key = NormalizeResourceVirtualPath(AssetPath);
-	const FResource* Found = Find<FResource>(Key);
+	auto Found = Find<FResource>(Key);
 	if (Found) return Found->GetLoadState();
 
 	return EAssetLoadState::Invalid;

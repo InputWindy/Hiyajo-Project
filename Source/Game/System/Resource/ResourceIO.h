@@ -210,7 +210,7 @@ bool FResourceSystem::ApplyTypedBulkData(FResourceImportConfig& Config, FResourc
 
 	auto Resource = std::make_unique<TResource>(Config.ObjectName, Type, Config.SourcePath);
 	TResource* Raw = Resource.get();
-	Catalog[Key] = std::move(Resource);
+	Catalog[Key] = Ref<FResource>(Resource.release());
 	RegisterOwnedResource(Config.PackagePath, Raw);
 
 	Raw->LoadState = EAssetLoadState::Pending;
@@ -230,7 +230,7 @@ template <typename TExporter>
 	{
 		if (!IsInitialized() || !bAcceptingNewWork) return false;
 
-		FResource* Resource = Find<FResource>(SourcePath);
+				auto Resource = Find<FResource>(SourcePath);
 		if (!Resource) return false;
 
 		TExporter Exporter;

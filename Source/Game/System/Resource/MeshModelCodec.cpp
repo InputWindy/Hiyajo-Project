@@ -108,7 +108,7 @@ template <typename TResource>
 
 	auto Resource = std::make_unique<TResource>(Name, Type, SourcePath);
 	TResource* Raw = Resource.get();
-	if (!Resources.RegisterResource(std::move(Resource), PackagePath))
+	if (!Resources.RegisterResource(Ref<FResource>(Resource.release()), PackagePath))
 		return nullptr;
 	return Raw;
 }

@@ -5,7 +5,7 @@
  *
  * DOTS-aligned: FResource is a plain C++ base class (virtual dtor for OOP dispatch).
  * No UObject, no FObjectRef, no FSoftObjectPath, no GC pool, no MAHO_OBJECT macros.
- * Asset paths are plain std::string. Catalog is unordered_map<string, unique_ptr<FResource>>.
+ * Asset paths are plain std::string. Catalog is unordered_map<string, Ref<FResource>>.
  */
 
 #include <Core/DependsPack.h>
@@ -14,6 +14,7 @@
 #include <Core/Sequencer/EngineExtension.h>
 #include <Core/Serialization/Archive.h>
 #include <Core/Server/TransferHandle.h>
+#include <Core/System/RefCounted.h>
 #include <Core/TypeList.h>
 #include <Core/Concurrent/AsyncTask.h>
 #include <Render/ResourceSnapshots.h>
@@ -85,7 +86,7 @@ using EResourceLoadState = EAssetLoadState;
 
 // ── FResource: base class for all asset types ──────────────────
 
-class FResource
+class FResource : public TRefCounted<FResource>
 {
 public:
 	FResource() = default;
@@ -438,12 +439,13 @@ public:
 
 	/** Find a loaded asset by path (e.g. "/Game/Textures/T_Base"). */
 	template <typename T = FResource>
-	[[nodiscard]] T* Find(const std::string& AssetPath) const
+	[[nodiscard]] Ref<T> Find(const std::string& AssetPath) const
 	{
 		std::string Key = NormalizeResourceVirtualPath(AssetPath);
 		auto It = Catalog.find(Key);
-		FResource* Ptr = (It != Catalog.end()) ? It->second.get() : nullptr;
-		return dynamic_cast<T*>(Ptr);
+		if (It == Catalog.end())
+			return Ref<T>();
+		return Ref<T>(static_cast<T*>(It->second.Get()));
 	}
 
 	/** Load package from disk. Returns true if already cached or load started. */
@@ -499,7 +501,7 @@ private:
 	void FinalizeSavePackageSuccess();
 	void FinalizeSavePackageFailure();
 
-	[[nodiscard]] bool RegisterResource(std::unique_ptr<FResource> Resource, const std::string& PackagePath = {});
+	[[nodiscard]] bool RegisterResource(Ref<FResource> Resource, const std::string& PackagePath = {});
 	[[nodiscard]] bool RegisterOwnedResource(const std::string& PackagePath, FResource* Resource);
 	bool UnregisterResource(FResource* Resource);
 
@@ -552,8 +554,8 @@ private:
 
 	std::unique_ptr<FResourceServer> Server;
 
-	/** Catalog: "PackagePath/ObjectName" → unique_ptr<FResource>. */
-	std::unordered_map<std::string, std::unique_ptr<FResource>> Catalog;
+	/** Catalog: "PackagePath/ObjectName" → Ref<FResource>. */
+	std::unordered_map<std::string, Ref<FResource>> Catalog;
 
 	std::unordered_map<std::string, FPendingIO> PendingIO;
 	bool bAcceptingNewWork = true;
