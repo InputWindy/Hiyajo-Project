@@ -67,7 +67,7 @@ std::string FResourceSystem::MakeObjectNameFromSource(const std::string& SourceP
 	return Stem.empty() ? std::string("Resource") : Stem;
 }
 
-std::string FResourceSystem::MakeAssetCatalogKey(const std::string& PackagePath, const std::string& ObjectName) const
+std::string FResourceSystem::MakeAssetCatalogKey(const std::string& PackagePath, const std::string& ObjectName)
 {
 	return PackagePath + "." + ObjectName;
 }

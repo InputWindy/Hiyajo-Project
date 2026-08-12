@@ -124,7 +124,7 @@ public:
 	 * Bidirectional binary serialization via FArchive (UE-compatible pattern).
 	 * Each subclass overrides this to save/load its CPU fields.
 	 */
-	virtual void Serialize(FArchive& Ar) { Ar << Name; Ar << SourcePath; }
+	virtual void Serialize(FArchive& Ar) { Ar.SerializeString(Name); Ar.SerializeString(SourcePath); }
 
 protected:
 	friend class FResourceSystem;
@@ -462,6 +462,17 @@ public:
 		const std::string& PackagePath,
 		bool bSaveDependencies = true);
 
+	/** Build "PackagePath.ObjectName" catalog key (pure string utility). */
+	[[nodiscard]] static std::string MakeAssetCatalogKey(
+		const std::string& PackagePath,
+		const std::string& ObjectName);
+
+	/** Register a new resource (takes ownership via Ref). Used by codecs/importers. */
+	[[nodiscard]] bool RegisterResource(Ref<FResource> Resource, const std::string& PackagePath = {});
+
+	/** Remove a resource from the catalog by pointer. Used for import rollback. */
+	bool UnregisterResource(FResource* Resource);
+
 private:
 	template <typename TResource>
 	friend class TResourceImporter;
@@ -489,7 +500,6 @@ private:
 
 	[[nodiscard]] static std::string NormalizePackageName(std::string Name);
 	[[nodiscard]] static std::string NormalizeSourcePath(std::string Path);
-	[[nodiscard]] std::string MakeAssetCatalogKey(const std::string& PackagePath, const std::string& ObjectName) const;
 	[[nodiscard]] static std::string NormalizeResourceVirtualPath(const std::string& VirtualPath);
 	[[nodiscard]] static std::string MakeObjectNameFromSource(const std::string& SourcePath);
 
@@ -501,9 +511,7 @@ private:
 	void FinalizeSavePackageSuccess();
 	void FinalizeSavePackageFailure();
 
-	[[nodiscard]] bool RegisterResource(Ref<FResource> Resource, const std::string& PackagePath = {});
 	[[nodiscard]] bool RegisterOwnedResource(const std::string& PackagePath, FResource* Resource);
-	bool UnregisterResource(FResource* Resource);
 
 	void Flush(const std::string& AssetPath);
 	void FlushAll();

@@ -336,7 +336,7 @@ void FMaterial::Serialize(FArchive& Ar)
 {
 	FResource::Serialize(Ar);
 
-	std::uint16_t Version = kCpuLayoutVersion;
+	std::uint16_t Version = ResourceCasset::kCpuLayoutVersion;
 	Ar << Version;
 
 	Ar.SerializeString(BaseColorPath);
@@ -354,7 +354,7 @@ void FStaticMesh::Serialize(FArchive& Ar)
 {
 	FResource::Serialize(Ar);
 
-	std::uint16_t Version = kCpuLayoutVersion;
+	std::uint16_t Version = ResourceCasset::kCpuLayoutVersion;
 	Ar << Version;
 	Ar.SerializeString(MaterialPath);
 
@@ -383,7 +383,7 @@ void FSkeleton::Serialize(FArchive& Ar)
 {
 	FResource::Serialize(Ar);
 
-	std::uint16_t Version = kCpuLayoutVersion;
+	std::uint16_t Version = ResourceCasset::kCpuLayoutVersion;
 	Ar << Version;
 
 	std::uint32_t BoneCount = Ar.IsSaving() ? static_cast<std::uint32_t>(Bones.size()) : 0;
@@ -402,7 +402,7 @@ void FAnimation::Serialize(FArchive& Ar)
 {
 	FResource::Serialize(Ar);
 
-	std::uint16_t Version = kCpuLayoutVersion;
+	std::uint16_t Version = ResourceCasset::kCpuLayoutVersion;
 	Ar << Version;
 	Ar.SerializeString(SkeletonPath);
 	Ar << DurationSeconds;
@@ -432,7 +432,7 @@ void FAnimationGraph::Serialize(FArchive& Ar)
 {
 	FResource::Serialize(Ar);
 
-	std::uint16_t Version = kCpuLayoutVersion;
+	std::uint16_t Version = ResourceCasset::kCpuLayoutVersion;
 	Ar << Version;
 	Ar.SerializeString(DocumentJson);
 }
@@ -441,7 +441,7 @@ void FPrefab::Serialize(FArchive& Ar)
 {
 	FResource::Serialize(Ar);
 
-	std::uint16_t Version = kCpuLayoutVersion;
+	std::uint16_t Version = ResourceCasset::kCpuLayoutVersion;
 	Ar << Version;
 	Ar.SerializeString(DocumentJson);
 }
