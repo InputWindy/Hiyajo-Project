@@ -434,10 +434,9 @@ public:
 	template <typename TExporter>
 	[[nodiscard]] std::string Export(FResourceExportConfig Config, const std::string& SourcePath);
 
-	/** Save a loaded package to .casset. */
+	/** Save a loaded package to .casset (disk path derived from PackagePath via FPaths). */
 	[[nodiscard]] bool SavePackage(
 		const std::string& PackagePath,
-		const std::string& FilePath = {},
 		bool bSaveDependencies = true);
 
 private:
@@ -489,7 +488,6 @@ private:
 	// ── EditorLayer access (friend) ──
 	[[nodiscard]] bool EnqueueSavePackage(
 		const std::string& PackagePath,
-		const std::string& FilePath = {},
 		bool bSaveDependencies = true);
 	[[nodiscard]] bool IsSavePackageBusy() const;
 	[[nodiscard]] float GetSavePackageProgress() const;
@@ -511,10 +509,9 @@ private:
 	[[nodiscard]] bool TakeBulkData(FTransferHandle Handle, FResourceBulkData& OutBulk);
 
 	[[nodiscard]] bool SavePackageInternal(
-		const std::string& PackagePath,
-		const std::string& FilePath,
-		bool bSaveDependencies,
-		std::unordered_set<std::string>& SavingPackageNames);
+			const std::string& PackagePath,
+			bool bSaveDependencies,
+			std::unordered_set<std::string>& SavingPackageNames);
 
 	[[nodiscard]] FResourcePackage* FindOrCreatePackage(const std::string& PackagePath, const std::string& FilePath = {});
 

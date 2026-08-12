@@ -407,16 +407,14 @@ std::string FResourceSystem::TryLoad(const std::string& AssetPath)
 
 bool FResourceSystem::SavePackage(
 	const std::string& PackagePath,
-	const std::string& FilePath,
 	bool bSaveDependencies)
 {
 	std::unordered_set<std::string> SavingPackageNames;
-	return SavePackageInternal(PackagePath, FilePath, bSaveDependencies, SavingPackageNames);
+	return SavePackageInternal(PackagePath, bSaveDependencies, SavingPackageNames);
 }
 
 bool FResourceSystem::EnqueueSavePackage(
 	const std::string& PackagePath,
-	const std::string& FilePath,
 	bool bSaveDependencies)
 {
 	if (AsyncSave.bActive)
@@ -434,9 +432,9 @@ bool FResourceSystem::EnqueueSavePackage(
 		return false;
 	}
 
-	FResourcePackage& Pkg = *It->second;
-	std::string OutPath = FilePath.empty() ? Pkg.FilePath : FilePath;
-	if (OutPath.empty()) return false;
+		FResourcePackage& Pkg = *It->second;
+		std::string OutPath = FPaths::ConvertPackageNameToFilename(PkgPath);
+		if (OutPath.empty()) return false;
 
 	if (bSaveDependencies)
 	{
@@ -454,9 +452,7 @@ bool FResourceSystem::EnqueueSavePackage(
 				auto DepIt = Packages.find(DepPkg);
 				if (DepIt == Packages.end()) continue;
 
-				std::string DepFile = DepIt->second->FilePath;
-				if (DepFile.empty()) continue;
-				if (!SavePackageInternal(DepPkg, DepFile, true, SavingPackageNames))
+				if (!SavePackageInternal(DepPkg, true, SavingPackageNames))
 				{
 					MAHO_CORE_ERROR("FResourceSystem::EnqueueSavePackage: failed saving dependency '{}'", DepPkg);
 					return false;
@@ -575,7 +571,6 @@ void FResourceSystem::FinalizeSavePackageFailure()
 
 bool FResourceSystem::SavePackageInternal(
 	const std::string& PackagePath,
-	const std::string& FilePath,
 	bool bSaveDependencies,
 	std::unordered_set<std::string>& SavingPackageNames)
 {
@@ -598,7 +593,7 @@ bool FResourceSystem::SavePackageInternal(
 	}
 
 	FResourcePackage& Pkg = *It->second;
-	const std::string OutPath = FilePath.empty() ? Pkg.FilePath : FilePath;
+	const std::string OutPath = FPaths::ConvertPackageNameToFilename(PkgKey);
 	if (OutPath.empty())
 	{
 		SavingPackageNames.erase(PkgKey);
@@ -622,9 +617,7 @@ bool FResourceSystem::SavePackageInternal(
 				auto DepIt = Packages.find(DepPkg);
 				if (DepIt == Packages.end()) continue;
 
-				std::string DepFile = DepIt->second->FilePath;
-				if (DepFile.empty()) continue;
-				if (!SavePackageInternal(DepPkg, DepFile, true, SavingPackageNames))
+				if (!SavePackageInternal(DepPkg, true, SavingPackageNames))
 				{
 					SavingPackageNames.erase(PkgKey);
 					return false;

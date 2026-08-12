@@ -3579,24 +3579,13 @@ bool FEditorLayer::SaveContentAsset(const std::string& CatalogKey)
 	}
 
 	FObjectRef PackageRef = Resource->GetPackage();
-	UPackage* Package = PackageRef.Cast<UPackage>();
-	if (!Package)
-	{
-		return false;
-	}
+		UPackage* Package = PackageRef.Cast<UPackage>();
+		if (!Package)
+		{
+			return false;
+		}
 
-	std::string FilePath = Package->GetFilePath();
-	if (FilePath.empty())
-	{
-		FilePath = FPaths::ConvertPackageNameToFilename(Package->GetName());
-	}
-	if (FilePath.empty())
-	{
-		AppendOutput("Save: no disk path for package " + Package->GetName(), spdlog::level::err);
-		return false;
-	}
-
-	return Resources->EnqueueSavePackage(PackageRef, FilePath, true);
+		return Resources->EnqueueSavePackage(PackageRef, true);
 }
 
 void FEditorLayer::OpenResourceBrowser(const std::string& CatalogKey)
