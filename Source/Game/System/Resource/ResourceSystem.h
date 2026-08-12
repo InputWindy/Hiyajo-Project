@@ -429,10 +429,10 @@ public:
 	[[nodiscard]] bool TryLoad(const std::string& AssetPath, bool bAsync = true);
 
 	template <typename TImporter>
-	[[nodiscard]] std::string Import(FResourceImportConfig Config);
+	[[nodiscard]] bool Import(FResourceImportConfig Config, std::string& OutAssetPath);
 
 	template <typename TExporter>
-	[[nodiscard]] std::string Export(FResourceExportConfig Config, const std::string& SourcePath);
+	[[nodiscard]] bool Export(FResourceExportConfig Config, const std::string& SourcePath);
 
 	/** Save a loaded package to .casset (disk path derived from PackagePath via FPaths). */
 	[[nodiscard]] bool SavePackage(
@@ -496,9 +496,10 @@ private:
 	void ForEachRegisteredResource(
 		const std::function<void(const std::string& CatalogKey, FResource& Resource)>& Fn) const;
 
-	[[nodiscard]] std::string EnqueueImport(
-		std::unique_ptr<IResourceImporter> Importer,
-		FResourceImportConfig Config);
+	[[nodiscard]] bool EnqueueImport(
+			std::unique_ptr<IResourceImporter> Importer,
+			FResourceImportConfig Config,
+			std::string& OutAssetPath);
 
 	template <typename TResource>
 	[[nodiscard]] bool ApplyTypedBulkData(FResourceImportConfig& Config, FResourceBulkData& Bulk);

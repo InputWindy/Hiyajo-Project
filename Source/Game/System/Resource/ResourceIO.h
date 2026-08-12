@@ -177,10 +177,10 @@ struct TResourceIOTraits<FPrefab>
 };
 
 template <typename TImporter>
-std::string FResourceSystem::Import(FResourceImportConfig Config)
-{
-	return EnqueueImport(std::make_unique<TImporter>(), std::move(Config));
-}
+	bool FResourceSystem::Import(FResourceImportConfig Config, std::string& OutAssetPath)
+	{
+		return EnqueueImport(std::make_unique<TImporter>(), std::move(Config), OutAssetPath);
+	}
 
 template <typename TResource>
 bool FResourceSystem::ApplyTypedBulkData(FResourceImportConfig& Config, FResourceBulkData& Bulk)
@@ -226,18 +226,18 @@ bool FResourceSystem::ApplyTypedBulkData(FResourceImportConfig& Config, FResourc
 }
 
 template <typename TExporter>
-std::string FResourceSystem::Export(FResourceExportConfig Config, const std::string& SourcePath)
-{
-	if (!IsInitialized() || !bAcceptingNewWork) return {};
+	bool FResourceSystem::Export(FResourceExportConfig Config, const std::string& SourcePath)
+	{
+		if (!IsInitialized() || !bAcceptingNewWork) return false;
 
-	FResource* Resource = Find<FResource>(SourcePath);
-	if (!Resource) return {};
+		FResource* Resource = Find<FResource>(SourcePath);
+		if (!Resource) return false;
 
-	TExporter Exporter;
-	if (!Exporter.CanExport(*Resource) || !Exporter.Export(std::move(Config), *Resource))
-		return {};
+		TExporter Exporter;
+		if (!Exporter.CanExport(*Resource) || !Exporter.Export(std::move(Config), *Resource))
+			return false;
 
-	return SourcePath;
-}
+		return true;
+	}
 
 } // namespace Maho

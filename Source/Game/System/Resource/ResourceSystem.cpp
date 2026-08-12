@@ -352,13 +352,15 @@ bool FResourceSystem::TakeBulkData(FTransferHandle Handle, FResourceBulkData& Ou
 	return Server->TryTakeBulkData(Handle, OutBulk);
 }
 
-std::string FResourceSystem::EnqueueImport(
+bool FResourceSystem::EnqueueImport(
 	std::unique_ptr<IResourceImporter> Importer,
-	FResourceImportConfig Config)
+	FResourceImportConfig Config,
+	std::string& OutAssetPath)
 {
-	if (!Importer) return {};
+	OutAssetPath.clear();
+	if (!Importer) return false;
 
-	if (!IsInitialized() || !bAcceptingNewWork) return {};
+	if (!IsInitialized() || !bAcceptingNewWork) return false;
 
 	Config.SourcePath = NormalizeSourcePath(std::move(Config.SourcePath));
 	Config.PackagePath = NormalizePackageName(std::move(Config.PackagePath));
@@ -366,26 +368,26 @@ std::string FResourceSystem::EnqueueImport(
 		Config.ObjectName = MakeObjectNameFromSource(Config.SourcePath);
 
 	if (Config.PackagePath.empty() || Config.ObjectName.empty() || Config.SourcePath.empty())
-		return {};
+		return false;
 
-	const std::string AssetPath = MakeAssetCatalogKey(Config.PackagePath, Config.ObjectName);
+	OutAssetPath = MakeAssetCatalogKey(Config.PackagePath, Config.ObjectName);
 
-	if (PendingIO.find(AssetPath) != PendingIO.end())
-		return AssetPath;
+	if (PendingIO.find(OutAssetPath) != PendingIO.end())
+		return true;
 
-	if (!HasActiveServer()) return {};
+	if (!HasActiveServer()) return false;
 
 	FTransferHandle Handle = RequestBulkLoad(Config.SourcePath);
-	if (!Handle.IsValid()) return {};
+	if (!Handle.IsValid()) return false;
 
 	FPendingIO Pending;
 	Pending.Handle = Handle;
-	Pending.AssetPath = AssetPath;
+	Pending.AssetPath = OutAssetPath;
 	Pending.Config = Config;
 	Pending.Importer = std::move(Importer);
-	PendingIO.emplace(AssetPath, std::move(Pending));
+	PendingIO.emplace(OutAssetPath, std::move(Pending));
 
-	return AssetPath;
+	return true;
 }
 
 bool FResourceSystem::TryLoad(const std::string& AssetPath, bool bAsync)
@@ -402,7 +404,8 @@ bool FResourceSystem::TryLoad(const std::string& AssetPath, bool bAsync)
 	Config.PackagePath = AssetPath;
 	Config.SourcePath = Filename;
 	Config.Mode = bAsync ? EResourceIOMode::Async : EResourceIOMode::Sync;
-	return !Import<FCassetPackageImporter>(std::move(Config)).empty();
+	std::string OutAssetPath;
+	return Import<FCassetPackageImporter>(std::move(Config), OutAssetPath);
 }
 
 bool FResourceSystem::SavePackage(

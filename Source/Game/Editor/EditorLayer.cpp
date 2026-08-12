@@ -283,10 +283,11 @@ namespace SeqGraphIds
 	return InferImportTypeLocal(SourcePath) != EResourceType::Unknown;
 }
 
-[[nodiscard]] std::string EnqueueTypedImport(
-	FResourceSystem& Resources,
-	FResourceImportConfig Config,
-	EResourceType TypeHint)
+	[[nodiscard]] bool EnqueueTypedImport(
+		FResourceSystem& Resources,
+		FResourceImportConfig Config,
+		EResourceType TypeHint,
+		std::string& OutSoftPath)
 {
 	if (TypeHint == EResourceType::Unknown)
 	{
@@ -298,23 +299,23 @@ namespace SeqGraphIds
 	{
 	case EResourceType::Texture:
 	case EResourceType::Texture2D:
-		return Resources.Import<TResourceImporter<FTexture2D>>(std::move(Config));
+		return Resources.Import<TResourceImporter<FTexture2D>>(std::move(Config), OutSoftPath);
 	case EResourceType::Texture3D:
-		return Resources.Import<TResourceImporter<FTexture3D>>(std::move(Config));
+		return Resources.Import<TResourceImporter<FTexture3D>>(std::move(Config), OutSoftPath);
 	case EResourceType::TextureCube:
-		return Resources.Import<TResourceImporter<FTextureCube>>(std::move(Config));
+		return Resources.Import<TResourceImporter<FTextureCube>>(std::move(Config), OutSoftPath);
 	case EResourceType::TextureCubeArray:
-		return Resources.Import<TResourceImporter<FTextureCubeArray>>(std::move(Config));
+		return Resources.Import<TResourceImporter<FTextureCubeArray>>(std::move(Config), OutSoftPath);
 	case EResourceType::Texture2DArray:
-		return Resources.Import<TResourceImporter<FTexture2DArray>>(std::move(Config));
+		return Resources.Import<TResourceImporter<FTexture2DArray>>(std::move(Config), OutSoftPath);
 	case EResourceType::Prefab:
-		return Resources.Import<TResourceImporter<FPrefab>>(std::move(Config));
+		return Resources.Import<TResourceImporter<FPrefab>>(std::move(Config), OutSoftPath);
 	default:
 		MAHO_CORE_ERROR(
 			"EnqueueTypedImport: unsupported type {} for '{}'",
 			static_cast<int>(TypeHint),
 			Config.SourcePath);
-		return {};
+		return false;
 	}
 }
 
@@ -3209,8 +3210,8 @@ void FEditorLayer::TickStartupCassetLoad()
 			Config.ObjectName = std::move(ObjectName);
 			Config.SourcePath = Absolute;
 			Config.Mode = EResourceIOMode::Async;
-			std::string Soft = Resources->Import<FCassetPackageImporter>(std::move(Config));
-			if (Soft.IsValid())
+			std::string Soft;
+			if (Resources->Import<FCassetPackageImporter>(std::move(Config), Soft))
 			{
 				StartupCassetSoftPaths.push_back(std::move(Soft));
 				++Kicked;
@@ -3416,7 +3417,9 @@ void FEditorLayer::TickManualContentImport()
 		Config.SourcePath = Job.SourcePath;
 		Config.TypeHint = Job.TypeHint;
 		Config.Mode = EResourceIOMode::Async;
-		Job.SoftPath = EnqueueTypedImport(*Resources, std::move(Config), Job.TypeHint);
+		std::string OutSoftPath;
+		Job.bKicked = EnqueueTypedImport(*Resources, std::move(Config), Job.TypeHint, OutSoftPath);
+		Job.SoftPath = OutSoftPath;
 		Job.bKicked = true;
 		ManualImportCurrentName = PathToUtf8(PathFromUtf8(Job.SourcePath).filename());
 		if (Job.SoftPath.IsValid())
