@@ -388,21 +388,21 @@ std::string FResourceSystem::EnqueueImport(
 	return AssetPath;
 }
 
-std::string FResourceSystem::TryLoad(const std::string& AssetPath)
+bool FResourceSystem::TryLoad(const std::string& AssetPath, bool bAsync)
 {
-	if (AssetPath.empty()) return {};
+	if (AssetPath.empty()) return false;
 
-	// Check if already loaded
-	if (Find(AssetPath)) return AssetPath;
+	// Already loaded
+	if (Find(AssetPath)) return true;
 
 	const std::string Filename = FPaths::ConvertPackageNameToFilename(AssetPath);
-	if (Filename.empty()) return {};
+	if (Filename.empty()) return false;
 
 	FResourceImportConfig Config;
 	Config.PackagePath = AssetPath;
 	Config.SourcePath = Filename;
-	Config.Mode = EResourceIOMode::Sync;
-	return Import<FCassetPackageImporter>(std::move(Config));
+	Config.Mode = bAsync ? EResourceIOMode::Async : EResourceIOMode::Sync;
+	return !Import<FCassetPackageImporter>(std::move(Config)).empty();
 }
 
 bool FResourceSystem::SavePackage(

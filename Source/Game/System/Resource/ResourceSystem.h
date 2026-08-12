@@ -425,8 +425,8 @@ public:
 		return dynamic_cast<T*>(Ptr);
 	}
 
-	/** Load package from disk and register all its objects. Returns the package name on success. */
-	[[nodiscard]] std::string TryLoad(const std::string& AssetPath);
+	/** Load package from disk. Returns true if already cached or load started. */
+	[[nodiscard]] bool TryLoad(const std::string& AssetPath, bool bAsync = true);
 
 	template <typename TImporter>
 	[[nodiscard]] std::string Import(FResourceImportConfig Config);
