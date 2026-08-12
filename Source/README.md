@@ -16,7 +16,7 @@ The engine (bottom) provides **five infrastructure primitives**:
 4. **`RHI`** talks to Vulkan (resources, queues, command lists)
 5. **`RDG`** lets you declare render passes without managing GPU state
 
-The project builds on these five primitives by adding **systems** (GC, Resource, WorkerPool, Script) and **features** (custom render passes). The engine never calls into the project — the project plugs itself into the engine's extension discovery.
+The project builds on these five primitives by adding **systems** (GC, Resource, Script) and **features** (custom render passes). The engine never calls into the project — the project plugs itself into the engine's extension discovery.
 
 ## Project Structure
 
@@ -41,8 +41,6 @@ Hiyajo-Project/
 │   │   │   │   ├── ResourceCasset.h/cpp    # .casset package format
 │   │   │   │   ├── TextureImageCodec.h/cpp # WIC texture decoder
 │   │   │   │   └── MeshModelCodec.h/cpp    # Assimp mesh decoder
-│   │   │   ├── WorkerPool/
-│   │   │   │   └── WorkerPoolSystem.h/cpp  # Thread pool for jobs
 │   │   │   └── Script/
 │   │   │       ├── ScriptSystem.h/cpp      # Lua VM manager
 │   │   │       └── LuaObjectReflect.h/cpp  # UObject → Lua bindings
@@ -143,7 +141,6 @@ virtual bool PreInitialize() override
     RegisterExtension<Maho::FRenderSystem>(EExtensionPriority::System);
     RegisterExtension<Maho::FGCSystem>(EExtensionPriority::System);       // ← Scanned
     RegisterExtension<Maho::FResourceSystem>(EExtensionPriority::System); // ← Scanned
-    RegisterExtension<Maho::FWorkerPoolSystem>(EExtensionPriority::System);
     RegisterExtension<FWorldLayer>(EExtensionPriority::Layer);            // ← Scanned
     RegisterExtension<Maho::FScriptLayer>(EExtensionPriority::Overlay);
     RegisterExtension<Maho::FScriptSystem>(EExtensionPriority::Overlay);

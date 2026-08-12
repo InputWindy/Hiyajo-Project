@@ -20,7 +20,6 @@ See [`../../../../Plugins/README.md`](../../../../Plugins/README.md):
 | `FRenderSystem` | Render |
 | `FGCSystem` | GC |
 | `FResourceSystem` | Resource |
-| `FWorkerPoolSystem` | WorkerPool |
 | `FScriptSystem` | Script |
 
 ## Render vs RHI thread
