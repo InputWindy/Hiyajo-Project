@@ -64,7 +64,7 @@ std::string SanitizeObjectName(std::string_view Raw, std::string_view Fallback)
 	std::string BaseName)
 {
 	const std::string Key = FResourceSystem::MakeAssetCatalogKey(PackagePath, BaseName);
-	if (!Resources.FindAsset(Key))
+	if (!Resources.Find<FResource>(Key))
 	{
 		return BaseName;
 	}
@@ -72,7 +72,7 @@ std::string SanitizeObjectName(std::string_view Raw, std::string_view Fallback)
 	{
 		const std::string Candidate = BaseName + "_" + std::to_string(Suffix);
 		const std::string CandidateKey = FResourceSystem::MakeAssetCatalogKey(PackagePath, Candidate);
-		if (!Resources.FindAsset(CandidateKey))
+		if (!Resources.Find<FResource>(CandidateKey))
 		{
 			return Candidate;
 		}

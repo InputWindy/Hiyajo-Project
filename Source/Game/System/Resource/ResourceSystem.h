@@ -423,13 +423,14 @@ public:
 
 	bool UnregisterResource(FResource* Resource);
 
-	/** Find a loaded asset by path (e.g. "Game/Textures/T_Base"). */
-	[[nodiscard]] FResource* FindAsset(const std::string& AssetPath) const;
-
-	template <typename T>
-	[[nodiscard]] T* FindAsset(const std::string& AssetPath) const
+	/** Find a loaded asset by path (e.g. "/Game/Textures/T_Base"). */
+	template <typename T = FResource>
+	[[nodiscard]] T* Find(const std::string& AssetPath) const
 	{
-		return dynamic_cast<T*>(FindAsset(AssetPath));
+		std::string Key = NormalizeResourceVirtualPath(AssetPath);
+		auto It = Catalog.find(Key);
+		FResource* Ptr = (It != Catalog.end()) ? It->second.get() : nullptr;
+		return dynamic_cast<T*>(Ptr);
 	}
 
 	/** Load package from disk and register all its objects. Returns the package name on success. */

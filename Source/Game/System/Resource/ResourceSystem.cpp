@@ -172,13 +172,6 @@ bool FResourceSystem::UnregisterResource(FResource* Resource)
 	return false;
 }
 
-FResource* FResourceSystem::FindAsset(const std::string& AssetPath) const
-{
-	std::string Key = NormalizeResourceVirtualPath(AssetPath);
-	auto It = Catalog.find(Key);
-	return (It != Catalog.end()) ? It->second.get() : nullptr;
-}
-
 void FResourceSystem::AbortFailedImport(FResource& Resource)
 {
 	UnregisterResource(&Resource);
@@ -400,7 +393,7 @@ std::string FResourceSystem::TryLoad(const std::string& AssetPath)
 	if (AssetPath.empty()) return {};
 
 	// Check if already loaded
-	if (FindAsset(AssetPath)) return AssetPath;
+	if (Find(AssetPath)) return AssetPath;
 
 	const std::string Filename = FPaths::ConvertPackageNameToFilename(AssetPath);
 	if (Filename.empty()) return {};
@@ -873,7 +866,7 @@ EAssetLoadState FResourceSystem::GetLoadState(const std::string& AssetPath) cons
 	if (AssetPath.empty()) return EAssetLoadState::Invalid;
 
 	const std::string Key = NormalizeResourceVirtualPath(AssetPath);
-	const FResource* Found = FindAsset(Key);
+	const FResource* Found = Find<FResource>(Key);
 	if (Found) return Found->GetLoadState();
 
 	return EAssetLoadState::Invalid;

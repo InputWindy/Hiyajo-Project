@@ -230,7 +230,7 @@ std::string FResourceSystem::Export(FResourceExportConfig Config, const std::str
 {
 	if (!IsInitialized() || !bAcceptingNewWork) return {};
 
-	FResource* Resource = FindAsset(SourcePath);
+	FResource* Resource = Find<FResource>(SourcePath);
 	if (!Resource) return {};
 
 	TExporter Exporter;
