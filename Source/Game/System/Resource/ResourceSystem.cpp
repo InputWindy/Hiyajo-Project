@@ -67,7 +67,7 @@ std::string FResourceSystem::MakeObjectNameFromSource(const std::string& SourceP
 	return Stem.empty() ? std::string("Resource") : Stem;
 }
 
-std::string FResourceSystem::MakeAssetCatalogKey(const std::string& PackagePath, const std::string& ObjectName)
+std::string FResourceSystem::MakeAssetCatalogKey(const std::string& PackagePath, const std::string& ObjectName) const
 {
 	return PackagePath + "." + ObjectName;
 }
@@ -870,11 +870,6 @@ EAssetLoadState FResourceSystem::GetLoadState(const std::string& AssetPath) cons
 	if (Found) return Found->GetLoadState();
 
 	return EAssetLoadState::Invalid;
-}
-
-bool FResourceSystem::IsReady(const std::string& AssetPath) const
-{
-	return GetLoadState(AssetPath) == EAssetLoadState::Ready;
 }
 
 void FResourceSystem::Flush(const std::string& AssetPath)

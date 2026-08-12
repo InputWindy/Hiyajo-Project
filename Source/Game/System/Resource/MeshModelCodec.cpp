@@ -63,7 +63,7 @@ std::string SanitizeObjectName(std::string_view Raw, std::string_view Fallback)
 	const std::string& PackagePath,
 	std::string BaseName)
 {
-	const std::string Key = FResourceSystem::MakeAssetCatalogKey(PackagePath, BaseName);
+	const std::string Key = Resources.MakeAssetCatalogKey(PackagePath, BaseName);
 	if (!Resources.Find<FResource>(Key))
 	{
 		return BaseName;
@@ -71,7 +71,7 @@ std::string SanitizeObjectName(std::string_view Raw, std::string_view Fallback)
 	for (int Suffix = 1; Suffix < 100000; ++Suffix)
 	{
 		const std::string Candidate = BaseName + "_" + std::to_string(Suffix);
-		const std::string CandidateKey = FResourceSystem::MakeAssetCatalogKey(PackagePath, Candidate);
+		const std::string CandidateKey = Resources.MakeAssetCatalogKey(PackagePath, Candidate);
 		if (!Resources.Find<FResource>(CandidateKey))
 		{
 			return Candidate;
@@ -918,7 +918,7 @@ bool ApplyDecodedModelScene(
 			Texture->SetSerializedSource(DecodeHint, std::move(SerializedBytes));
 		}
 		Texture->MarkCpuReady();
-		std::string AssetPath = FResourceSystem::MakeAssetCatalogKey(PackagePath, Texture->GetName());
+		std::string AssetPath = Resources.MakeAssetCatalogKey(PackagePath, Texture->GetName());
 		ImportedTextures.emplace(CacheKey, AssetPath);
 		return AssetPath;
 	};
@@ -1011,10 +1011,10 @@ bool ApplyDecodedModelScene(
 			Materials[static_cast<std::size_t>(Src.MaterialIndex)])
 		{
 			Mesh->SetMaterial(
-				FResourceSystem::MakeAssetCatalogKey(PackagePath, Materials[static_cast<std::size_t>(Src.MaterialIndex)]->GetName()));
+				Resources.MakeAssetCatalogKey(PackagePath, Materials[static_cast<std::size_t>(Src.MaterialIndex)]->GetName()));
 		}
 		Mesh->MarkCpuReady();
-		MeshSoftPathStrings.push_back(FResourceSystem::MakeAssetCatalogKey(PackagePath, Mesh->GetName()));
+		MeshSoftPathStrings.push_back(Resources.MakeAssetCatalogKey(PackagePath, Mesh->GetName()));
 	}
 
 	std::string SkeletonSoftPath;
@@ -1044,7 +1044,7 @@ bool ApplyDecodedModelScene(
 		}
 		Skeleton->SetBones(std::move(Bones));
 		Skeleton->MarkCpuReady();
-		SkeletonPath = FResourceSystem::MakeAssetCatalogKey(PackagePath, Skeleton->GetName());
+		SkeletonPath = Resources.MakeAssetCatalogKey(PackagePath, Skeleton->GetName());
 		SkeletonSoftPath = SkeletonPath;
 	}
 
@@ -1097,7 +1097,7 @@ bool ApplyDecodedModelScene(
 		}
 		Anim->SetTracks(std::move(Tracks));
 		Anim->MarkCpuReady();
-		AnimSoftPathStrings.push_back(FResourceSystem::MakeAssetCatalogKey(PackagePath, Anim->GetName()));
+		AnimSoftPathStrings.push_back(Resources.MakeAssetCatalogKey(PackagePath, Anim->GetName()));
 	}
 
 	FAnimationGraph* Graph = CreateRegisteredResource<FAnimationGraph>(
@@ -1115,7 +1115,7 @@ bool ApplyDecodedModelScene(
 		AnimSoftPathStrings.empty() ? std::string{} : AnimSoftPathStrings.front();
 	Graph->SetDocumentJson(BuildAnimationGraphJson(AnimSoftPathStrings, DefaultAnim));
 	Graph->MarkCpuReady();
-	const std::string GraphSoftPath = FResourceSystem::MakeAssetCatalogKey(PackagePath, Graph->GetName());
+	const std::string GraphSoftPath = Resources.MakeAssetCatalogKey(PackagePath, Graph->GetName());
 
 	Prefab.SetDocumentJson(BuildPrefabDocumentJson(
 		Scene.Metadata,

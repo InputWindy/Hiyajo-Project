@@ -415,14 +415,6 @@ public:
 	FResourceSystem(const FResourceSystem&) = delete;
 	FResourceSystem& operator=(const FResourceSystem&) = delete;
 
-	/** Register a resource in the catalog (takes ownership via unique_ptr). */
-	[[nodiscard]] bool RegisterResource(std::unique_ptr<FResource> Resource, const std::string& PackagePath = {});
-
-	/** Register a sibling resource into an existing package. */
-	[[nodiscard]] bool RegisterOwnedResource(const std::string& PackagePath, FResource* Resource);
-
-	bool UnregisterResource(FResource* Resource);
-
 	/** Find a loaded asset by path (e.g. "/Game/Textures/T_Base"). */
 	template <typename T = FResource>
 	[[nodiscard]] T* Find(const std::string& AssetPath) const
@@ -448,40 +440,22 @@ public:
 		const std::string& FilePath = {},
 		bool bSaveDependencies = true);
 
-	[[nodiscard]] bool EnqueueSavePackage(
-		const std::string& PackagePath,
-		const std::string& FilePath = {},
-		bool bSaveDependencies = true);
-	[[nodiscard]] bool IsSavePackageBusy() const;
-	[[nodiscard]] float GetSavePackageProgress() const;
-	[[nodiscard]] const std::string& GetSavePackageStatusText() const;
+private:
+	template <typename TResource>
+	friend class TResourceImporter;
+	friend class FCassetPackageImporter;
+	friend class FResource;
+	friend class FEditorLayer;
 
-	[[nodiscard]] EAssetLoadState GetLoadState(const std::string& AssetPath) const;
-	[[nodiscard]] bool IsReady(const std::string& AssetPath) const;
-	void Flush(const std::string& AssetPath);
-	void FlushAll();
-
-	[[nodiscard]] static std::string MakeAssetCatalogKey(const std::string& PackagePath, const std::string& ObjectName);
-	[[nodiscard]] static std::string NormalizeResourceVirtualPath(const std::string& VirtualPath);
-
-	void ForEachRegisteredResource(
-		const std::function<void(const std::string& CatalogKey, FResource& Resource)>& Fn) const;
+	[[nodiscard]] bool Initialize();
+	void Shutdown();
+	void PrepareForExit();
 
 	[[nodiscard]] bool IsInitialized() const;
 
 	const char* GetName() const override { return "Resource"; }
 	bool ExecuteStage(EEngineStage Stage) override;
 	[[nodiscard]] bool IsIdle() const override;
-
-private:
-	template <typename TResource>
-	friend class TResourceImporter;
-	friend class FCassetPackageImporter;
-	friend class FResource;
-
-	[[nodiscard]] bool Initialize();
-	void Shutdown();
-	void PrepareForExit();
 
 	struct FPendingIO
 	{
@@ -493,6 +467,8 @@ private:
 
 	[[nodiscard]] static std::string NormalizePackageName(std::string Name);
 	[[nodiscard]] static std::string NormalizeSourcePath(std::string Path);
+	[[nodiscard]] std::string MakeAssetCatalogKey(const std::string& PackagePath, const std::string& ObjectName) const;
+	[[nodiscard]] static std::string NormalizeResourceVirtualPath(const std::string& VirtualPath);
 	[[nodiscard]] static std::string MakeObjectNameFromSource(const std::string& SourcePath);
 
 	void UnregisterResourcesInPackage(const std::string& PackagePath);
@@ -502,6 +478,25 @@ private:
 	void TickSavePackage();
 	void FinalizeSavePackageSuccess();
 	void FinalizeSavePackageFailure();
+
+	[[nodiscard]] bool RegisterResource(std::unique_ptr<FResource> Resource, const std::string& PackagePath = {});
+	[[nodiscard]] bool RegisterOwnedResource(const std::string& PackagePath, FResource* Resource);
+	bool UnregisterResource(FResource* Resource);
+
+	void Flush(const std::string& AssetPath);
+	void FlushAll();
+
+	// ── EditorLayer access (friend) ──
+	[[nodiscard]] bool EnqueueSavePackage(
+		const std::string& PackagePath,
+		const std::string& FilePath = {},
+		bool bSaveDependencies = true);
+	[[nodiscard]] bool IsSavePackageBusy() const;
+	[[nodiscard]] float GetSavePackageProgress() const;
+	[[nodiscard]] const std::string& GetSavePackageStatusText() const;
+	[[nodiscard]] EAssetLoadState GetLoadState(const std::string& AssetPath) const;
+	void ForEachRegisteredResource(
+		const std::function<void(const std::string& CatalogKey, FResource& Resource)>& Fn) const;
 
 	[[nodiscard]] std::string EnqueueImport(
 		std::unique_ptr<IResourceImporter> Importer,
