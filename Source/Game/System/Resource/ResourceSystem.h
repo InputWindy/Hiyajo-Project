@@ -12,6 +12,7 @@
 #include <Core/Export.h>
 #include <Core/Json.h>
 #include <Core/Sequencer/EngineExtension.h>
+#include <Core/Serialization/Archive.h>
 #include <Core/Server/TransferHandle.h>
 #include <Core/TypeList.h>
 #include <Core/Concurrent/AsyncTask.h>
@@ -118,6 +119,12 @@ public:
 		return {};
 	}
 
+	/**
+	 * Bidirectional binary serialization via FArchive (UE-compatible pattern).
+	 * Each subclass overrides this to save/load its CPU fields.
+	 */
+	virtual void Serialize(FArchive& Ar) { Ar << Name; Ar << SourcePath; }
+
 protected:
 	friend class FResourceSystem;
 
@@ -166,6 +173,8 @@ public:
 		std::uint32_t InMipCount,
 		bool bInSRGB,
 		std::vector<std::uint8_t> InPixels);
+
+	void Serialize(FArchive& Ar) override;
 
 protected:
 	ETextureDimension Dimension = ETextureDimension::Tex2D;
@@ -231,6 +240,8 @@ public:
 
 	[[nodiscard]] std::vector<std::string> GetReferencePaths() const override;
 
+	void Serialize(FArchive& Ar) override;
+
 	float BaseColorFactor[4] = {1.f, 1.f, 1.f, 1.f};
 	float MetallicFactor = 0.f;
 	float RoughnessFactor = 1.f;
@@ -265,6 +276,8 @@ public:
 		std::vector<std::uint32_t> InIndices);
 
 	[[nodiscard]] std::vector<std::string> GetReferencePaths() const override;
+
+	void Serialize(FArchive& Ar) override;
 
 protected:
 	std::string MaterialPath;
@@ -301,6 +314,8 @@ public:
 	[[nodiscard]] const std::vector<FSkeletonBone>& GetBones() const { return Bones; }
 	void SetBones(std::vector<FSkeletonBone> InBones);
 
+	void Serialize(FArchive& Ar) override;
+
 protected:
 	std::vector<FSkeletonBone> Bones;
 };
@@ -319,6 +334,8 @@ public:
 
 	[[nodiscard]] std::vector<std::string> GetReferencePaths() const override;
 
+	void Serialize(FArchive& Ar) override;
+
 protected:
 	std::string SkeletonPath;
 	float DurationSeconds = 0.f;
@@ -335,6 +352,8 @@ public:
 	[[nodiscard]] const std::string& GetDocumentJson() const { return DocumentJson; }
 	void SetDocumentJson(std::string Json) { DocumentJson = std::move(Json); }
 
+	void Serialize(FArchive& Ar) override;
+
 protected:
 	std::string DocumentJson;
 };
@@ -346,6 +365,8 @@ public:
 
 	[[nodiscard]] const std::string& GetDocumentJson() const { return DocumentJson; }
 	void SetDocumentJson(std::string Json) { DocumentJson = std::move(Json); }
+
+	void Serialize(FArchive& Ar) override;
 
 protected:
 	std::string DocumentJson;
