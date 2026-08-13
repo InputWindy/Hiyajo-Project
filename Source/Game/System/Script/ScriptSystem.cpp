@@ -1,13 +1,13 @@
 ﻿#include "Game/System/Script/ScriptSystem.h"
+#include "Game/System/Script/LuaComponentBindings.h"
+#include "Game/World/Components/TransformComponent.h"
 
 #include <Core/Application/App.h>
 #include <Core/System/Console.h>
 #include <Core/System/Log.h>
 
-#define SOL_ALL_SAFETIES_ON 1
-#include <sol/sol.hpp>
-
 #include <filesystem>
+#include <unordered_map>
 #include <utility>
 
 namespace Maho
@@ -80,11 +80,18 @@ void RegisterCoreBindings(sol::state& Lua)
 	return (fs::path(ScriptsDirectory) / Path).string();
 }
 
+[[nodiscard]] std::uint32_t PackEntityKey(FEntityHandle Handle)
+{
+	return (static_cast<std::uint32_t>(Handle.Index) << 8) | static_cast<std::uint32_t>(Handle.Generation);
+}
+
 } // namespace
 
 struct FScriptSystem::FImpl
 {
 	sol::state Lua;
+	std::unordered_map<std::string, sol::table> ScriptPrototypes;
+	std::unordered_map<std::uint32_t, sol::table> EntityInstances;
 };
 
 FScriptSystem::FScriptSystem() = default;
@@ -177,6 +184,7 @@ bool FScriptSystem::InitializeLua(const std::string& InScriptsDirectory)
 	Impl->Lua["package"]["path"] = PackagePath;
 
 	RegisterCoreBindings(Impl->Lua);
+	RegisterLuaComponentBindings(Impl->Lua);
 
 	bLuaInitialized = true;
 	MAHO_CORE_INFO("FScriptSystem Lua initialized (Scripts='{}')", ScriptsDirectory);
@@ -302,6 +310,126 @@ bool FScriptSystem::Call(const char* FunctionName, float Arg0)
 		return false;
 	}
 	return true;
+}
+
+void FScriptSystem::TickEntityScript(FEntityHandle Handle, const char* ScriptPath, FTransformComponent* Transform, float DeltaTime)
+{
+	if (!bLuaInitialized || !Impl || !ScriptPath || ScriptPath[0] == '\0')
+	{
+		return;
+	}
+
+	const std::string Resolved = ResolveScriptPath(ScriptsDirectory, ScriptPath);
+
+	// 1. Load / cache script prototype (script returns a table of hooks).
+	sol::table Prototype;
+	auto ProtoIt = Impl->ScriptPrototypes.find(Resolved);
+	if (ProtoIt == Impl->ScriptPrototypes.end())
+	{
+		sol::protected_function_result Result = Impl->Lua.safe_script_file(Resolved);
+		if (!Result.valid())
+		{
+			const sol::error Error = Result;
+			MAHO_CORE_ERROR("FScriptSystem::TickEntityScript('{}'): {}", Resolved, Error.what());
+			return;
+		}
+		if (Result.return_count() < 1)
+		{
+			MAHO_CORE_ERROR("FScriptSystem::TickEntityScript('{}'): script must return a table", Resolved);
+			return;
+		}
+		sol::object Returned = Result[0];
+		if (!Returned.is<sol::table>())
+		{
+			MAHO_CORE_ERROR("FScriptSystem::TickEntityScript('{}'): script must return a table", Resolved);
+			return;
+		}
+		Prototype = Returned.as<sol::table>();
+		Impl->ScriptPrototypes[Resolved] = Prototype;
+	}
+	else
+	{
+		Prototype = ProtoIt->second;
+	}
+
+	// 2. Get or create per-entity instance (prototype as metatable __index).
+	const std::uint32_t Key = PackEntityKey(Handle);
+	sol::table Instance;
+	auto InstIt = Impl->EntityInstances.find(Key);
+	if (InstIt == Impl->EntityInstances.end())
+	{
+		Instance = Impl->Lua.create_table_with();
+		sol::table Metatable = Impl->Lua.create_table_with();
+		Metatable["__index"] = Prototype;
+		Instance[sol::metatable_key] = Metatable;
+		Impl->EntityInstances[Key] = Instance;
+
+		sol::protected_function OnBegin = Instance["OnBegin"];
+		if (OnBegin.valid())
+		{
+			sol::protected_function_result Result = OnBegin(Instance, DeltaTime);
+			if (!Result.valid())
+			{
+				const sol::error Error = Result;
+				MAHO_CORE_ERROR("FScriptSystem::OnBegin('{}'): {}", Resolved, Error.what());
+			}
+		}
+	}
+	else
+	{
+		Instance = InstIt->second;
+	}
+
+	// 3. Mount components (pointer-backed; refresh each frame).
+	if (Transform)
+	{
+		Instance["Transform"] = Transform;
+	}
+	else
+	{
+		Instance["Transform"] = sol::nil;
+	}
+
+	// 4. Per-frame update hook.
+	sol::protected_function OnUpdate = Instance["OnUpdate"];
+	if (OnUpdate.valid())
+	{
+		sol::protected_function_result Result = OnUpdate(Instance, DeltaTime);
+		if (!Result.valid())
+		{
+			const sol::error Error = Result;
+			MAHO_CORE_ERROR("FScriptSystem::OnUpdate('{}'): {}", Resolved, Error.what());
+		}
+	}
+}
+
+void FScriptSystem::DestroyEntityScript(FEntityHandle Handle)
+{
+	if (!bLuaInitialized || !Impl)
+	{
+		return;
+	}
+
+	const std::uint32_t Key = PackEntityKey(Handle);
+	auto It = Impl->EntityInstances.find(Key);
+	if (It == Impl->EntityInstances.end())
+	{
+		return;
+	}
+
+	sol::table Instance = It->second;
+	sol::protected_function OnDestroy = Instance["OnDestroy"];
+	if (OnDestroy.valid())
+	{
+		sol::protected_function_result Result = OnDestroy(Instance);
+		if (!Result.valid())
+		{
+			const sol::error Error = Result;
+			MAHO_CORE_ERROR("FScriptSystem::OnDestroy: {}", Error.what());
+		}
+	}
+
+	Impl->EntityInstances.erase(It);
 }
 
 } // namespace Maho

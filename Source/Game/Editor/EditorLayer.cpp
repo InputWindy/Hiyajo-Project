@@ -1923,19 +1923,15 @@ void FEditorLayer::DrawInspectorPanel()
 			FTransformComponent* T = Mgr.GetComponent<FTransformComponent>(SelectedEntity);
 			if (T)
 			{
-				float Pos[3] = { T->LocalToWorld[12], T->LocalToWorld[13], T->LocalToWorld[14] };
+				float Pos[3] = { T->Position.x, T->Position.y, T->Position.z };
 				if (ImGui::DragFloat3("Position", Pos, 0.1f))
 				{
-					T->LocalToWorld[12] = Pos[0];
-					T->LocalToWorld[13] = Pos[1];
-					T->LocalToWorld[14] = Pos[2];
+					T->Position = glm::vec3(Pos[0], Pos[1], Pos[2]);
 				}
-				float Scale[3] = { T->LocalToWorld[0], T->LocalToWorld[5], T->LocalToWorld[10] };
+				float Scale[3] = { T->Scale.x, T->Scale.y, T->Scale.z };
 				if (ImGui::DragFloat3("Scale", Scale, 0.01f, 0.01f, 100.0f))
 				{
-					T->LocalToWorld[0] = Scale[0];
-					T->LocalToWorld[5] = Scale[1];
-					T->LocalToWorld[10] = Scale[2];
+					T->Scale = glm::vec3(Scale[0], Scale[1], Scale[2]);
 				}
 			}
 		}

@@ -3,6 +3,7 @@
 #include "Game/World/Systems/MovementSystem.h"
 #include "Game/World/Systems/CameraSystem.h"
 #include "Game/World/Systems/SceneGatherSystem.h"
+#include "Game/World/Systems/ScriptExecutionSystem.h"
 #include "Game/Components/AllComponents.h"
 
 #include <Core/Application/App.h>
@@ -32,6 +33,7 @@ bool FWorldLayer::ExecuteStage(Maho::EEngineStage Stage)
 			SimGroup->AddSystem<FMovementSystem>();
 			SimGroup->AddSystem<FCameraSystem>();
 			SimGroup->AddSystem<FSceneGatherSystem>();
+			SimGroup->AddSystem<FScriptExecutionSystem>();
 
 			// Spawn demo entity with a TransformComponent.
 			{
@@ -48,7 +50,7 @@ bool FWorldLayer::ExecuteStage(Maho::EEngineStage Stage)
 
 				Maho::FTransformComponent CamTransform;
 				CamTransform.SetIdentity();
-				CamTransform.LocalToWorld[14] = -5.0f;
+				CamTransform.Position = glm::vec3(0.0f, 0.0f, -5.0f);
 				World.SetComponent<Maho::FTransformComponent>(CamHandle, CamTransform);
 
 				Maho::FCameraComponent CamComp;

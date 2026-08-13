@@ -5,6 +5,7 @@
 #include <Core/Export.h>
 #include <Core/Sequencer/EngineExtension.h>
 #include <Core/TypeList.h>
+#include <ECS/EntityHandle.h>
 
 #include <memory>
 #include <string>
@@ -15,6 +16,7 @@ namespace Maho
 
 class FResourceSystem;
 class FScriptSystem;
+class FTransformComponent;
 
 /**
  * Types that can register themselves into the Lua VM.
@@ -89,6 +91,17 @@ public:
 
 	/** Call a global Lua function with one float (e.g. OnUpdate / OnFixedUpdate). */
 	[[nodiscard]] bool Call(const char* FunctionName, float Arg0);
+
+	/**
+	 * Run one entity's script (per-entity scripting).
+	 * Loads/caches the script prototype by path, instantiates per-entity table,
+	 * mounts Transform (may be null), then calls OnUpdate(instance, dt).
+	 * OnBegin(instance, dt) is called on first run.
+	 */
+	void TickEntityScript(FEntityHandle Handle, const char* ScriptPath, FTransformComponent* Transform, float DeltaTime);
+
+	/** Release the per-entity instance (OnDestroy hook, then erase). */
+	void DestroyEntityScript(FEntityHandle Handle);
 
 private:
 	const char* GetName() const override { return "Script"; }
