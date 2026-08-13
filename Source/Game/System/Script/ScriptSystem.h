@@ -93,12 +93,17 @@ public:
 	[[nodiscard]] bool Call(const char* FunctionName, float Arg0);
 
 	/**
-	 * Run one entity's script (per-entity scripting).
-	 * Loads/caches the script prototype by path, instantiates per-entity table,
-	 * mounts Transform (may be null), then calls OnUpdate(instance, dt).
-	 * OnBegin(instance, dt) is called on first run.
+	 * Dispatch one engine stage to an entity's script.
+	 * Loads/caches prototype by path, instantiates per-entity table,
+	 * mounts Transform (may be null), then calls HookName(instance, dt)
+	 * if present. OnBegin(instance, dt) fires on first dispatch.
 	 */
-	void TickEntityScript(FEntityHandle Handle, const char* ScriptPath, FTransformComponent* Transform, float DeltaTime);
+	void DispatchEntityScript(
+		FEntityHandle Handle,
+		const char* ScriptPath,
+		FTransformComponent* Transform,
+		float DeltaTime,
+		const char* HookName);
 
 	/** Release the per-entity instance (OnDestroy hook, then erase). */
 	void DestroyEntityScript(FEntityHandle Handle);

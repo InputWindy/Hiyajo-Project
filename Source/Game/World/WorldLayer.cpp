@@ -3,19 +3,72 @@
 #include "Game/World/Systems/MovementSystem.h"
 #include "Game/World/Systems/CameraSystem.h"
 #include "Game/World/Systems/SceneGatherSystem.h"
-#include "Game/World/Systems/ScriptExecutionSystem.h"
 #include "Game/Components/AllComponents.h"
+#include "Game/System/Script/ScriptSystem.h"
 
 #include <Core/Application/App.h>
 #include <Core/System/Log.h>
 #include <ECS/Query.h>
 
+#include <glm/glm.hpp>
+
 #include <utility>
+
+namespace
+{
+
+/** EEngineStage → per-entity script hook name (nullptr = no hook for this stage). */
+[[nodiscard]] const char* GetScriptHookForStage(Maho::EEngineStage Stage)
+{
+	switch (Stage)
+	{
+	case Maho::EEngineStage::BeginFrame: return "OnBeginFrame";
+	case Maho::EEngineStage::ProcessInput: return "OnProcessInput";
+	case Maho::EEngineStage::FixedUpdate: return "OnFixedUpdate";
+	case Maho::EEngineStage::Update: return "OnUpdate";
+	case Maho::EEngineStage::LateUpdate: return "OnLateUpdate";
+	case Maho::EEngineStage::EndFrame: return "OnEndFrame";
+	case Maho::EEngineStage::PreRender: return "OnPreRender";
+	case Maho::EEngineStage::PostRender: return "OnPostRender";
+	default: return nullptr;
+	}
+}
+
+} // namespace
 
 FWorldLayer::FWorldLayer(std::string InWorldName)
 	: Maho::FLayer("WorldLayer")
 	, WorldName(std::move(InWorldName))
 {
+}
+
+void FWorldLayer::DispatchScriptStage(Maho::EEngineStage Stage, float DeltaTime)
+{
+	const char* Hook = GetScriptHookForStage(Stage);
+	if (!Hook)
+	{
+		return;
+	}
+
+	Maho::FScriptSystem* Script = Maho::GApp ? Maho::GApp->GetExtension<Maho::FScriptSystem>() : nullptr;
+	if (!Script || !Script->IsLuaInitialized())
+	{
+		return;
+	}
+
+	auto Query = World.Query<Maho::FScriptComponent>();
+	Query.ForEach([&](Maho::FEntityHandle Handle, Maho::FScriptComponent& Component)
+	{
+		if (!Component.bEnabled || !Component.IsValid())
+		{
+			return;
+		}
+
+		Maho::FTransformComponent* Transform =
+			World.GetEntityManager().GetComponent<Maho::FTransformComponent>(Handle);
+
+		Script->DispatchEntityScript(Handle, Component.ScriptPath, Transform, DeltaTime, Hook);
+	});
 }
 
 bool FWorldLayer::ExecuteStage(Maho::EEngineStage Stage)
@@ -33,7 +86,6 @@ bool FWorldLayer::ExecuteStage(Maho::EEngineStage Stage)
 			SimGroup->AddSystem<FMovementSystem>();
 			SimGroup->AddSystem<FCameraSystem>();
 			SimGroup->AddSystem<FSceneGatherSystem>();
-			SimGroup->AddSystem<FScriptExecutionSystem>();
 
 			// Spawn demo entity with a TransformComponent.
 			{
@@ -80,20 +132,32 @@ bool FWorldLayer::ExecuteStage(Maho::EEngineStage Stage)
 		if (bWorldReady)
 		{
 			RootGroup.OnBeginFrame(World);
+			DispatchScriptStage(Stage, 0.0f);
+		}
+		break;
+
+	case Maho::EEngineStage::ProcessInput:
+		if (bWorldReady)
+		{
+			DispatchScriptStage(Stage, 0.0f);
 		}
 		break;
 
 	case Maho::EEngineStage::FixedUpdate:
 		if (bWorldReady && Maho::GApp)
 		{
-			RootGroup.OnFixedUpdate(Maho::GApp->GetFixedDeltaSeconds(), World);
+			const float FixedDt = Maho::GApp->GetFixedDeltaSeconds();
+			RootGroup.OnFixedUpdate(FixedDt, World);
+			DispatchScriptStage(Stage, FixedDt);
 		}
 		break;
 
 	case Maho::EEngineStage::Update:
 		if (bWorldReady && Maho::GApp)
 		{
-			RootGroup.OnUpdate(Maho::GApp->GetDeltaSeconds(), World);
+			const float Dt = Maho::GApp->GetDeltaSeconds();
+			RootGroup.OnUpdate(Dt, World);
+			DispatchScriptStage(Stage, Dt);
 			World.GetEntityManager().EndFrame();
 		}
 		break;
@@ -101,7 +165,9 @@ bool FWorldLayer::ExecuteStage(Maho::EEngineStage Stage)
 	case Maho::EEngineStage::LateUpdate:
 		if (bWorldReady && Maho::GApp)
 		{
-			RootGroup.OnLateUpdate(Maho::GApp->GetDeltaSeconds(), World);
+			const float Dt = Maho::GApp->GetDeltaSeconds();
+			RootGroup.OnLateUpdate(Dt, World);
+			DispatchScriptStage(Stage, Dt);
 		}
 		break;
 
@@ -109,6 +175,7 @@ bool FWorldLayer::ExecuteStage(Maho::EEngineStage Stage)
 		if (bWorldReady)
 		{
 			RootGroup.OnEndFrame(World);
+			DispatchScriptStage(Stage, 0.0f);
 		}
 		break;
 
@@ -116,6 +183,7 @@ bool FWorldLayer::ExecuteStage(Maho::EEngineStage Stage)
 		if (bWorldReady)
 		{
 			RootGroup.OnPreRender(World);
+			DispatchScriptStage(Stage, 0.0f);
 		}
 		break;
 
@@ -123,6 +191,7 @@ bool FWorldLayer::ExecuteStage(Maho::EEngineStage Stage)
 		if (bWorldReady)
 		{
 			RootGroup.OnPostRender(World);
+			DispatchScriptStage(Stage, 0.0f);
 		}
 		break;
 

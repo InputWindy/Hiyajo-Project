@@ -312,9 +312,9 @@ bool FScriptSystem::Call(const char* FunctionName, float Arg0)
 	return true;
 }
 
-void FScriptSystem::TickEntityScript(FEntityHandle Handle, const char* ScriptPath, FTransformComponent* Transform, float DeltaTime)
+void FScriptSystem::DispatchEntityScript(FEntityHandle Handle, const char* ScriptPath, FTransformComponent* Transform, float DeltaTime, const char* HookName)
 {
-	if (!bLuaInitialized || !Impl || !ScriptPath || ScriptPath[0] == '\0')
+	if (!bLuaInitialized || !Impl || !ScriptPath || ScriptPath[0] == '\0' || !HookName || HookName[0] == '\0')
 	{
 		return;
 	}
@@ -330,18 +330,18 @@ void FScriptSystem::TickEntityScript(FEntityHandle Handle, const char* ScriptPat
 		if (!Result.valid())
 		{
 			const sol::error Error = Result;
-			MAHO_CORE_ERROR("FScriptSystem::TickEntityScript('{}'): {}", Resolved, Error.what());
+			MAHO_CORE_ERROR("FScriptSystem::DispatchEntityScript('{}'): {}", Resolved, Error.what());
 			return;
 		}
 		if (Result.return_count() < 1)
 		{
-			MAHO_CORE_ERROR("FScriptSystem::TickEntityScript('{}'): script must return a table", Resolved);
+			MAHO_CORE_ERROR("FScriptSystem::DispatchEntityScript('{}'): script must return a table", Resolved);
 			return;
 		}
 		sol::object Returned = Result[0];
 		if (!Returned.is<sol::table>())
 		{
-			MAHO_CORE_ERROR("FScriptSystem::TickEntityScript('{}'): script must return a table", Resolved);
+			MAHO_CORE_ERROR("FScriptSystem::DispatchEntityScript('{}'): script must return a table", Resolved);
 			return;
 		}
 		Prototype = Returned.as<sol::table>();
@@ -380,7 +380,7 @@ void FScriptSystem::TickEntityScript(FEntityHandle Handle, const char* ScriptPat
 		Instance = InstIt->second;
 	}
 
-	// 3. Mount components (pointer-backed; refresh each frame).
+	// 3. Mount components (pointer-backed; refresh each dispatch).
 	if (Transform)
 	{
 		Instance["Transform"] = Transform;
@@ -390,15 +390,15 @@ void FScriptSystem::TickEntityScript(FEntityHandle Handle, const char* ScriptPat
 		Instance["Transform"] = sol::nil;
 	}
 
-	// 4. Per-frame update hook.
-	sol::protected_function OnUpdate = Instance["OnUpdate"];
-	if (OnUpdate.valid())
+	// 4. Stage hook.
+	sol::protected_function Hook = Instance[HookName];
+	if (Hook.valid())
 	{
-		sol::protected_function_result Result = OnUpdate(Instance, DeltaTime);
+		sol::protected_function_result Result = Hook(Instance, DeltaTime);
 		if (!Result.valid())
 		{
 			const sol::error Error = Result;
-			MAHO_CORE_ERROR("FScriptSystem::OnUpdate('{}'): {}", Resolved, Error.what());
+			MAHO_CORE_ERROR("FScriptSystem::{}({}): {}", HookName, Resolved, Error.what());
 		}
 	}
 }

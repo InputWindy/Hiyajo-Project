@@ -3,12 +3,20 @@
 #include <ECS/World.h>
 #include <ECS/SystemGroup.h>
 #include <Core/Sequencer/EngineExtension.h>
+#include <Core/Sequencer/EngineStage.h>
 
 #include <string>
 
+namespace Maho
+{
+class FScriptSystem;
+class FTransformComponent;
+}
+
 /**
  * Owns the ECS world (pure data) + the root system group (driver skeleton).
- * Maps engine stages to SystemGroup lifecycle hooks.
+ * Maps engine stages to SystemGroup lifecycle hooks, and dispatches the
+ * matching script stage hook to entities carrying FScriptComponent.
  */
 class FWorldLayer final : public Maho::FLayer
 {
@@ -22,6 +30,9 @@ public:
 	[[nodiscard]] const Maho::FWorld& GetWorld() const { return World; }
 
 private:
+	/** Dispatch one EEngineStage to every entity with a script component. */
+	void DispatchScriptStage(Maho::EEngineStage Stage, float DeltaTime);
+
 	std::string WorldName;
 	Maho::FWorld World;
 	Maho::FInitializationSystemGroup RootGroup;
