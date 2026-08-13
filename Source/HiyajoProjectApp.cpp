@@ -2,7 +2,7 @@
 #include <EntryPoint.h>
 
 #include "Game/GameWorldLayer.h"
-#include "Render/ForwardRendererFeature.h"
+#include "Render/Forward/ForwardRendererFeature.h"
 
 #if defined(GAME_WITH_EDITOR) && defined(MAHO_WITH_IMGUI)
 #	include "Editor/EditorLayer.h"

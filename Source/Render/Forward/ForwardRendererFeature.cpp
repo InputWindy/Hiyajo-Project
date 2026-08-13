@@ -1,5 +1,5 @@
-#include "Render/ForwardRendererFeature.h"
-#include "MahoCommonUniforms.h"
+#include "Render/Forward/ForwardRendererFeature.h"
+#include "Render/MahoCommonUniforms.h"
 
 #include <Core/Application/App.h>
 #include <Core/Engine.h>
@@ -285,10 +285,10 @@ bool FForwardRendererFeature::EnsureShaderReady()
 	const FConfig& Config = GApp->GetConfig();
 
 	// ── Compile compute (culling) shader ──
-	const std::string CullSrc = LoadTextFile(Config.ProjectShadersDir + "/ForwardCulling.comp");
+	const std::string CullSrc = LoadTextFile(Config.ProjectShadersDir + "/Forward/ForwardCulling.comp");
 	if (CullSrc.empty())
 	{
-		MAHO_CORE_ERROR("ForwardRenderer: missing ForwardCulling.comp");
+		MAHO_CORE_ERROR("ForwardRenderer: missing Forward/ForwardCulling.comp");
 		return false;
 	}
 
@@ -302,10 +302,10 @@ bool FForwardRendererFeature::EnsureShaderReady()
 	}
 
 	// ── Compile vertex shader ──
-	const std::string VertSrc = LoadTextFile(Config.ProjectShadersDir + "/Forward.vert");
+	const std::string VertSrc = LoadTextFile(Config.ProjectShadersDir + "/Forward/Forward.vert");
 	if (VertSrc.empty())
 	{
-		MAHO_CORE_ERROR("ForwardRenderer: missing Forward.vert");
+		MAHO_CORE_ERROR("ForwardRenderer: missing Forward/Forward.vert");
 		return false;
 	}
 	FShaderCompileDesc VertDesc;
@@ -318,10 +318,10 @@ bool FForwardRendererFeature::EnsureShaderReady()
 	}
 
 	// ── Compile fragment shader ──
-	const std::string FragSrc = LoadTextFile(Config.ProjectShadersDir + "/Forward.frag");
+	const std::string FragSrc = LoadTextFile(Config.ProjectShadersDir + "/Forward/Forward.frag");
 	if (FragSrc.empty())
 	{
-		MAHO_CORE_ERROR("ForwardRenderer: missing Forward.frag");
+		MAHO_CORE_ERROR("ForwardRenderer: missing Forward/Forward.frag");
 		return false;
 	}
 	FShaderCompileDesc FragDesc;
