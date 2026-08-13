@@ -642,7 +642,7 @@ void FForwardRendererFeature::ExecuteBasePass(FRDGBuilder& GB)
 	{
 		auto& Params = GB.AllocateParameters();
 		Params.Reads = {
-			{ RDGIndirect, ERHIResourceState::UnorderedAccess },
+			{ RDGIndirect, ERHIResourceState::IndirectArgument },
 			{ RDGScene, ERHIResourceState::UnorderedAccess },
 			{ RDGFrameUBO, ERHIResourceState::UniformBuffer },
 		};
