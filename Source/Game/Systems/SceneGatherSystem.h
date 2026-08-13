@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Core/ECS/System.h>
+#include <Core/Extension/World/ECS/System.h>
 
 /**
  * Gathers scene draw items + camera from the ECS world and submits

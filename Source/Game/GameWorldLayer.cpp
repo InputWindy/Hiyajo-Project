@@ -1,12 +1,12 @@
-#include "Game/World/GameWorldLayer.h"
+#include "Game/GameWorldLayer.h"
 
 #include <Core/Extension/World/Components/TransformComponent.h>
-#include <Core/ECS/EntityHandle.h>
-#include <Core/ECS/SystemGroup.h>
+#include <Core/Extension/World/ECS/EntityHandle.h>
+#include <Core/Extension/World/ECS/SystemGroup.h>
 
-#include "Game/World/Systems/MovementSystem.h"
-#include "Game/World/Systems/CameraSystem.h"
-#include "Game/World/Systems/SceneGatherSystem.h"
+#include "Game/Systems/MovementSystem.h"
+#include "Game/Systems/CameraSystem.h"
+#include "Game/Systems/SceneGatherSystem.h"
 #include "Game/Components/AllComponents.h"
 
 #include <glm/glm.hpp>

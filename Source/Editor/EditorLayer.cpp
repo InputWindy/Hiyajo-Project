@@ -1,12 +1,12 @@
-﻿// FIXME: EditorLayer needs porting to FResource API. Temporarily disabled.
+// FIXME: EditorLayer needs porting to FResource API. Temporarily disabled.
 #if 0
-#include "Game/Editor/EditorLayer.h"
+#include "Editor/EditorLayer.h"
 
 #include <Core/Application/App.h>
 #include <Core/System/ConfigFile.h>
 #include <Core/System/Console.h>
-#include "Game/Editor/AgentChatClient.h"
-#include "Game/Editor/EditorUIRegistry.h"
+#include "Editor/AgentChatClient.h"
+#include "Editor/EditorUIRegistry.h"
 #include <Core/Extension/Platform/Platform.h>
 #include <Core/Extension/Render/Render.h>
 #include <Core/Extension/Resource/ResourceSystem.h>

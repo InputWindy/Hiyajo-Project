@@ -1,4 +1,4 @@
-#include "Game/Editor/AgentChatClient.h"
+#include "Editor/AgentChatClient.h"
 
 #include <Core/Json.h>
 #include <Core/System/Log.h>

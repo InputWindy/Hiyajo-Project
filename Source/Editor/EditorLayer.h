@@ -1,12 +1,12 @@
 #pragma once
 
-#include "Game/Editor/AgentChatClient.h"
-#include "Game/Editor/EditorUIRegistry.h"
+#include "Editor/AgentChatClient.h"
+#include "Editor/EditorUIRegistry.h"
 #include <Core/Extension/Resource/ResourceSystem.h>
-#include <Core/ECS/SystemGroup.h>
-#include <Core/ECS/EntityManager.h>
-#include <Core/ECS/EntityHandle.h>
-#include "Game/World/GameWorldLayer.h"
+#include <Core/Extension/World/ECS/SystemGroup.h>
+#include <Core/Extension/World/ECS/EntityManager.h>
+#include <Core/Extension/World/ECS/EntityHandle.h>
+#include "Game/GameWorldLayer.h"
 #include "Game/Components/AllComponents.h"
 #include <Core/Extension/World/Components/TransformComponent.h>
 #include <Core/Sequencer/EngineExtension.h>

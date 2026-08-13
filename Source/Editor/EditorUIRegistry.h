@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Game/Editor/EditorUITypes.h"
+#include "Editor/EditorUITypes.h"
 
 #include <string>
 #include <string_view>

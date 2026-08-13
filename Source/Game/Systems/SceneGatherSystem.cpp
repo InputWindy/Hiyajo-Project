@@ -1,7 +1,7 @@
-#include "Game/World/Systems/SceneGatherSystem.h"
+#include "Game/Systems/SceneGatherSystem.h"
 
-#include <Core/ECS/World.h>
-#include <Core/ECS/Query.h>
+#include <Core/Extension/World/ECS/World.h>
+#include <Core/Extension/World/ECS/Query.h>
 #include <Core/Application/App.h>
 #include <Core/Extension/Render/Render.h>
 #include <Render/RenderServer.h>

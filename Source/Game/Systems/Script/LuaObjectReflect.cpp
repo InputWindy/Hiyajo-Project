@@ -1,4 +1,4 @@
-﻿#include "Game/System/Script/LuaObjectReflect.h"
+#include "Game/Systems/Script/LuaObjectReflect.h"
 
 #include <LuaReflectBindings.gen.h>
 

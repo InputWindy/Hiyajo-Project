@@ -1,5 +1,5 @@
-#include "Game/World/Systems/CameraSystem.h"
-#include <Core/ECS/World.h>
+#include "Game/Systems/CameraSystem.h"
+#include <Core/Extension/World/ECS/World.h>
 
 void FCameraSystem::OnUpdate(float DeltaTime, Maho::FWorld& World)
 {

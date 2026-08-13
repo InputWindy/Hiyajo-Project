@@ -1,4 +1,4 @@
-#include "Game/Editor/EditorUIRegistry.h"
+#include "Editor/EditorUIRegistry.h"
 
 #include <Core/Application/App.h>
 #include <Core/System/Log.h>
