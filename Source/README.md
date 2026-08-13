@@ -155,7 +155,7 @@ virtual bool PostInitialize() override
 ```
 
 **To add a new feature:**
-1. Create `Source/Game/System/MySystem/MySystem.h` — auto-registered as System
+1. Create `Source/Game/Systems/MySystem.h` — an `ISystem`, register in `GameWorldLayer::RegisterSystems`
 2. Or create `Source/Render/MyPassFeature.h` — auto-registered as RenderFeature
 3. Rebuild — that's it.
 
