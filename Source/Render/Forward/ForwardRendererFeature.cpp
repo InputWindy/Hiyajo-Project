@@ -490,37 +490,6 @@ void FForwardRendererFeature::DestroyShaderResources()
 	S.bShaderReady = false;
 }
 
-void FForwardRendererFeature::UploadSceneInstances(const FSceneUpdatePacket& Scene)
-{
-	auto& S = *Ptr;
-	const std::uint32_t Count = static_cast<std::uint32_t>(Scene.Draws.size());
-	if (Count == 0 || Count > GPUSceneMaxInstances) return;
-
-	std::vector<FGPUSceneInstance> Instances(Count);
-	for (std::uint32_t I = 0; I < Count; ++I)
-	{
-		const FSceneDrawItem& Item = Scene.Draws[I];
-		std::memcpy(Instances[I].LocalToWorld, Item.LocalToWorld, sizeof(Item.LocalToWorld));
-		Instances[I].Color[0] = 0.8f;
-		Instances[I].Color[1] = 0.6f;
-		Instances[I].Color[2] = 0.3f;
-		Instances[I].Color[3] = 1.0f;
-	}
-	S.RHI->UpdateBuffer(S.SceneInstanceBuf, 0, Instances.size() * sizeof(FGPUSceneInstance), Instances.data());
-
-	// Reset indirect args to empty commands (InstanceCount=0).
-	std::vector<FDrawIndexedIndirectArgs> Empty(GPUSceneMaxDraws);
-	for (auto& E : Empty)
-	{
-		E.IndexCount = S.CubeIndexCount;
-		E.InstanceCount = 0;
-		E.FirstIndex = 0;
-		E.VertexOffset = 0;
-		E.FirstInstance = 0;
-	}
-	S.RHI->UpdateBuffer(S.IndirectArgsBuf, 0, Empty.size() * sizeof(FDrawIndexedIndirectArgs), Empty.data());
-}
-
 void FForwardRendererFeature::ComputeFrustumPlanes(const FCameraFrameData& Camera, float Aspect, FGPUCullParams& OutParams)
 {
 	float FOV = Camera.FOV;
@@ -556,8 +525,32 @@ void FForwardRendererFeature::ExecuteStage(ERenderPipelineStage Stage, FRDGBuild
 	const FSceneUpdatePacket& Scene = S.RenderServer->GetCurrentScene();
 	if (Scene.Draws.empty()) return;
 
-	// ── CPU-side upload ──
-	UploadSceneInstances(Scene);
+	const std::uint32_t NumInstances = static_cast<std::uint32_t>(Scene.Draws.size());
+	if (NumInstances > GPUSceneMaxInstances) return;
+
+	// ── Build CPU-side data ──
+
+	std::vector<FGPUSceneInstance> Instances(NumInstances);
+	for (std::uint32_t I = 0; I < NumInstances; ++I)
+	{
+		const FSceneDrawItem& Item = Scene.Draws[I];
+		std::memcpy(Instances[I].LocalToWorld, Item.LocalToWorld, sizeof(Item.LocalToWorld));
+		Instances[I].Color[0] = 0.8f;
+		Instances[I].Color[1] = 0.6f;
+		Instances[I].Color[2] = 0.3f;
+		Instances[I].Color[3] = 1.0f;
+	}
+
+	// Empty indirect commands (InstanceCount=0) — prefill so invisible draws are no-ops.
+	std::vector<FDrawIndexedIndirectArgs> Empty(GPUSceneMaxDraws);
+	for (auto& E : Empty)
+	{
+		E.IndexCount = S.CubeIndexCount;
+		E.InstanceCount = 0;
+		E.FirstIndex = 0;
+		E.VertexOffset = 0;
+		E.FirstInstance = 0;
+	}
 
 	FFrameUniforms FrameUni{};
 	std::memcpy(FrameUni.View, Scene.Camera.View, sizeof(FrameUni.View));
@@ -575,17 +568,21 @@ void FForwardRendererFeature::ExecuteStage(ERenderPipelineStage Stage, FRDGBuild
 				FrameUni.ViewProj[Col*4+Row] = Sum;
 			}
 	}
-	S.RHI->UpdateBuffer(S.FrameUniformBuf, 0, sizeof(FrameUni), &FrameUni);
 
 	FGPUCullParams CullParams{};
 	ComputeFrustumPlanes(Scene.Camera, Scene.Camera.AspectRatio, CullParams);
-	CullParams.InstanceCount = static_cast<std::uint32_t>(Scene.Draws.size());
+	CullParams.InstanceCount = NumInstances;
 
 	// ── RDG resources ──
 	FRDGBuffer* RDGScene = GB.RegisterExternalBuffer(S.SceneInstanceBuf, ERHIResourceState::Common, "GPUSceneInstances");
 	FRDGBuffer* RDGIndirect = GB.RegisterExternalBuffer(S.IndirectArgsBuf, ERHIResourceState::Common, "IndirectArgs");
 	FRDGBuffer* RDGFrameUBO = GB.RegisterExternalBuffer(S.FrameUniformBuf, ERHIResourceState::Common, "FrameUBO");
 	FRDGTexture* RDGViewport = GB.RegisterExternalTexture(S.ViewportTex, ERHIResourceState::Common, "ViewportTex");
+
+	// ── Declarative uploads (staging + copy passes, barriers auto-derived) ──
+	GB.UploadBuffer(RDGScene, Instances.data(), Instances.size() * sizeof(FGPUSceneInstance));
+	GB.UploadBuffer(RDGIndirect, Empty.data(), Empty.size() * sizeof(FDrawIndexedIndirectArgs));
+	GB.UploadBuffer(RDGFrameUBO, &FrameUni, sizeof(FrameUni));
 
 	// ── Compute pass: culling → indirect args ──
 	{

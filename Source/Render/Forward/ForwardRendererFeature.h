@@ -103,7 +103,6 @@ private:
 	bool EnsureShaderReady();
 	void DestroyShaderResources();
 	void BuildCubeGeometry();
-	void UploadSceneInstances(const class FSceneUpdatePacket& Scene);
 	void ComputeFrustumPlanes(const struct FCameraFrameData& Camera, float Aspect, FGPUCullParams& OutParams);
 };
 
