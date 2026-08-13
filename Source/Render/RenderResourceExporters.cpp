@@ -1,4 +1,4 @@
-﻿#include "Game/System/Resource/ResourceSystem.h"
+﻿#include <Core/Extension/Resource/ResourceSystem.h>
 #include "ResourceSnapshotConverters.h"
 #include <Core/Server/TransferHandle.h>
 #include <Render/RenderServer.h>

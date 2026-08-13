@@ -140,7 +140,7 @@ virtual bool PreInitialize() override
     RegisterExtension<Maho::FRenderSystem>(EExtensionPriority::System);
     RegisterExtension<Maho::FGCSystem>(EExtensionPriority::System);       // ← Scanned
     RegisterExtension<Maho::FResourceSystem>(EExtensionPriority::System); // ← Scanned
-    RegisterExtension<FWorldLayer>(EExtensionPriority::Layer);            // ← Scanned
+    RegisterExtension<GameWorldLayer>(EExtensionPriority::Layer);            // ← Scanned
     RegisterExtension<Maho::FScriptSystem>(EExtensionPriority::Overlay);
     RegisterExtension<Maho::FEditorLayer>(EExtensionPriority::Overlay);
     return true;

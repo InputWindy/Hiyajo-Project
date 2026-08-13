@@ -1,7 +1,7 @@
 #pragma once
 
 #include <Core/ECS/System.h>
-#include "Game/World/Components/TransformComponent.h"
+#include <Core/Extension/World/Components/TransformComponent.h>
 
 /**
  * Demo system: rotates every entity that has a TransformComponent.

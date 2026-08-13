@@ -2,13 +2,13 @@
 
 #include "Game/Editor/AgentChatClient.h"
 #include "Game/Editor/EditorUIRegistry.h"
-#include "Game/System/Resource/ResourceSystem.h"
+#include <Core/Extension/Resource/ResourceSystem.h>
 #include <Core/ECS/SystemGroup.h>
 #include <Core/ECS/EntityManager.h>
 #include <Core/ECS/EntityHandle.h>
-#include "Game/World/WorldLayer.h"
+#include "Game/World/GameWorldLayer.h"
 #include "Game/Components/AllComponents.h"
-#include "Game/World/Components/TransformComponent.h"
+#include <Core/Extension/World/Components/TransformComponent.h>
 #include <Core/Sequencer/EngineExtension.h>
 #include <Core/System/Log.h>
 #include <Core/Sequencer/EngineStage.h>

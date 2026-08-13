@@ -6,7 +6,7 @@
 #include <Core/Extension/Render/Render.h>
 #include <Render/RenderServer.h>
 #include <Render/SceneUpdatePacket.h>
-#include "Game/World/Components/TransformComponent.h"
+#include <Core/Extension/World/Components/TransformComponent.h>
 #include "Game/Components/AllComponents.h"
 
 #include <glm/glm.hpp>

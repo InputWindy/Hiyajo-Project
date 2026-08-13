@@ -9,14 +9,14 @@
 #include "Game/Editor/EditorUIRegistry.h"
 #include <Core/Extension/Platform/Platform.h>
 #include <Core/Extension/Render/Render.h>
-#include "Game/System/Resource/ResourceSystem.h"
+#include <Core/Extension/Resource/ResourceSystem.h>
 #include <Core/System/Log.h>
 #include <Core/System/Paths.h>
 #include <Core/System/Utf8Path.h>
 #include <Render/UI/ImGuiExtensions.h>
 
-#include "Game/System/Resource/ResourceIO.h"
-#include "Game/System/Resource/TextureImageCodec.h"
+#include <Core/Extension/Resource/ResourceIO.h>
+#include <Core/Extension/Resource/TextureImageCodec.h>
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -1693,7 +1693,7 @@ void FEditorLayer::DrawMainViewportPanel()
 			const char* CatalogKey = static_cast<const char*>(Payload->Data);
 			if (CatalogKey && CatalogKey[0] != '\0')
 			{
-				if (FWorldLayer* WL = GApp->GetExtension<FWorldLayer>())
+				if (GameWorldLayer* WL = GApp->GetExtension<GameWorldLayer>())
 				{
 					FWorld& World = WL->GetWorld();
 					FEntityManager& Mgr = World.GetEntityManager();
@@ -1741,7 +1741,7 @@ void FEditorLayer::DrawSceneOutliner()
 		return;
 	}
 
-	FWorldLayer* WorldLayer = GApp->GetExtension<FWorldLayer>();
+	GameWorldLayer* WorldLayer = GApp->GetExtension<GameWorldLayer>();
 	if (!WorldLayer)
 	{
 		ImGui::TextDisabled("No WorldLayer loaded.");
@@ -1839,7 +1839,7 @@ void FEditorLayer::DrawInspectorPanel()
 		return;
 	}
 
-	FWorldLayer* WorldLayer = GApp->GetExtension<FWorldLayer>();
+	GameWorldLayer* WorldLayer = GApp->GetExtension<GameWorldLayer>();
 	if (!WorldLayer)
 	{
 		ImGui::TextDisabled("No WorldLayer loaded.");

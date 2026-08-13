@@ -1,4 +1,4 @@
-﻿#include "Game/System/Resource/ResourceSystem.h"
+﻿#include <Core/Extension/Resource/ResourceSystem.h>
 #include <Render/ResourceSnapshots.h>
 #include <Render/TextureRenderProxy.h>
 #include <Render/MeshRenderProxy.h>
