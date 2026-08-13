@@ -77,9 +77,7 @@ Hiyajo-Project/
 ├── Intermediate/
 │   └── Generated/                   # Codegen output (gitignored)
 │       ├── Hiyajo-ProjectApp.cpp    #   Auto-registered extensions + features
-│       ├── ObjectReflectTypes.gen.* #   UObject reflection tables
-│       ├── ResourceTypes.gen.*      #   UResource type enums
-│       └── LuaReflectBindings.gen.* #   Lua usertype registrations
+│       └── ObjectReflectTypes.gen.* #   Reflection tables
 ├── Binaries/Win64/Debug/
 │   ├── Hiyajo-Project.exe
 │   ├── Maho.dll                     #   Engine DLL
