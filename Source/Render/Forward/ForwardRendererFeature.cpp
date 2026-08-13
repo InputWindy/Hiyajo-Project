@@ -176,14 +176,14 @@ void FForwardRendererFeature::BuildCubeGeometry()
 	{
 		FRHIBufferDesc Desc;
 		Desc.Size = sizeof(CubeVertices);
-		Desc.Usage = ERHIBufferUsage::Vertex;
+		Desc.Usage = ERHIBufferUsage::Vertex | ERHIBufferUsage::TransferDst;
 		Desc.MemoryUsage = ERHIMemoryUsage::GPUOnly;
 		S.CubeVBO = RHI->CreateBuffer(Desc);
 	}
 	{
 		FRHIBufferDesc Desc;
 		Desc.Size = sizeof(CubeIndices);
-		Desc.Usage = ERHIBufferUsage::Index;
+		Desc.Usage = ERHIBufferUsage::Index | ERHIBufferUsage::TransferDst;
 		Desc.MemoryUsage = ERHIMemoryUsage::GPUOnly;
 		S.CubeIBO = RHI->CreateBuffer(Desc);
 		S.CubeIndexCount = static_cast<std::uint32_t>(sizeof(CubeIndices) / sizeof(std::uint32_t));
@@ -228,14 +228,14 @@ bool FForwardRendererFeature::SetupPersistentResources(FRenderServer& RenderServ
 	{
 		FRHIBufferDesc Desc;
 		Desc.Size = sizeof(FGPUSceneInstance) * GPUSceneMaxInstances;
-		Desc.Usage = ERHIBufferUsage::Storage;
-		Desc.MemoryUsage = ERHIMemoryUsage::CPUToGPU;
+		Desc.Usage = ERHIBufferUsage::Storage | ERHIBufferUsage::TransferDst;
+		Desc.MemoryUsage = ERHIMemoryUsage::GPUOnly;
 		S.SceneInstanceBuf = S.RHI->CreateBuffer(Desc);
 	}
 	{
 		FRHIBufferDesc Desc;
 		Desc.Size = sizeof(FDrawIndexedIndirectArgs) * GPUSceneMaxDraws;
-		Desc.Usage = ERHIBufferUsage::Storage | ERHIBufferUsage::Indirect;
+		Desc.Usage = ERHIBufferUsage::Storage | ERHIBufferUsage::Indirect | ERHIBufferUsage::TransferDst;
 		Desc.MemoryUsage = ERHIMemoryUsage::GPUOnly;
 		S.IndirectArgsBuf = S.RHI->CreateBuffer(Desc);
 	}
@@ -246,8 +246,8 @@ bool FForwardRendererFeature::SetupPersistentResources(FRenderServer& RenderServ
 	{
 		FRHIBufferDesc Desc;
 		Desc.Size = sizeof(FFrameUniforms);
-		Desc.Usage = ERHIBufferUsage::Uniform;
-		Desc.MemoryUsage = ERHIMemoryUsage::CPUToGPU;
+		Desc.Usage = ERHIBufferUsage::Uniform | ERHIBufferUsage::TransferDst;
+		Desc.MemoryUsage = ERHIMemoryUsage::GPUOnly;
 		S.FrameUniformBuf = S.RHI->CreateBuffer(Desc);
 	}
 
