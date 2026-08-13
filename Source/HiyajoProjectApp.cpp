@@ -2,7 +2,7 @@
 #include <EntryPoint.h>
 
 #include "Game/GameWorldLayer.h"
-#include "Render/TriangleBasePassFeature.h"
+#include "Render/ForwardRendererFeature.h"
 
 #if defined(GAME_WITH_EDITOR) && defined(MAHO_WITH_IMGUI)
 #	include "Editor/EditorLayer.h"
@@ -51,7 +51,7 @@ protected:
 		if (RenderSystem)
 		{
 			auto& Server = RenderSystem->GetRenderServer();
-			Server.RegisterFeature<Maho::FTriangleBasePassFeature>();
+			Server.RegisterFeature<Maho::FForwardRendererFeature>();
 		}
 		return true;
 	}
