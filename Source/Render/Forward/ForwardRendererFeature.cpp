@@ -159,11 +159,17 @@ void FForwardRendererFeature::OnUnregister(FRenderServer& RenderServer)
 
 	if (S.ViewportTexView)   { RHI->DestroyTextureView(S.ViewportTexView); S.ViewportTexView = nullptr; }
 	if (S.ViewportTex)       { RHI->DestroyTexture(S.ViewportTex); S.ViewportTex = nullptr; }
-	if (S.FrameUniformBuf)   { RHI->DestroyBuffer(S.FrameUniformBuf); S.FrameUniformBuf = nullptr; }
+	for (int Slot = 0; Slot < FrameRingSize; ++Slot)
+	{
+		if (S.FrameUniformBuf[Slot])  { RHI->DestroyBuffer(S.FrameUniformBuf[Slot]); S.FrameUniformBuf[Slot] = nullptr; }
+	}
 	if (S.CubeIBO)           { RHI->DestroyBuffer(S.CubeIBO); S.CubeIBO = nullptr; }
 	if (S.CubeVBO)           { RHI->DestroyBuffer(S.CubeVBO); S.CubeVBO = nullptr; }
-	if (S.IndirectArgsBuf)   { RHI->DestroyBuffer(S.IndirectArgsBuf); S.IndirectArgsBuf = nullptr; }
-	if (S.SceneInstanceBuf)  { RHI->DestroyBuffer(S.SceneInstanceBuf); S.SceneInstanceBuf = nullptr; }
+	for (int Slot = 0; Slot < FrameRingSize; ++Slot)
+	{
+		if (S.IndirectArgsBuf[Slot])  { RHI->DestroyBuffer(S.IndirectArgsBuf[Slot]); S.IndirectArgsBuf[Slot] = nullptr; }
+		if (S.SceneInstanceBuf[Slot]) { RHI->DestroyBuffer(S.SceneInstanceBuf[Slot]); S.SceneInstanceBuf[Slot] = nullptr; }
+	}
 
 	S.bInitialized = false;
 }
@@ -201,31 +207,34 @@ bool FForwardRendererFeature::SetupPersistentResources(FRenderServer& RenderServ
 	S.RenderServer = &RenderServer;
 	if (!S.RHI) return false;
 
-	// ── GPU scene buffers ──
+	// ── GPU scene buffers (ring: one slot per frame in flight) ──
+	for (int Slot = 0; Slot < FrameRingSize; ++Slot)
 	{
 		FRHIBufferDesc Desc;
 		Desc.Size = sizeof(FGPUSceneInstance) * GPUSceneMaxInstances;
 		Desc.Usage = ERHIBufferUsage::Storage;
 		Desc.MemoryUsage = ERHIMemoryUsage::CPUToGPU;
-		S.SceneInstanceBuf = S.RHI->CreateBuffer(Desc);
+		S.SceneInstanceBuf[Slot] = S.RHI->CreateBuffer(Desc);
 	}
+	for (int Slot = 0; Slot < FrameRingSize; ++Slot)
 	{
 		FRHIBufferDesc Desc;
 		Desc.Size = sizeof(FDrawIndexedIndirectArgs) * GPUSceneMaxDraws;
 		Desc.Usage = ERHIBufferUsage::Storage | ERHIBufferUsage::Indirect;
 		Desc.MemoryUsage = ERHIMemoryUsage::CPUToGPU;
-		S.IndirectArgsBuf = S.RHI->CreateBuffer(Desc);
+		S.IndirectArgsBuf[Slot] = S.RHI->CreateBuffer(Desc);
 	}
 
 	BuildCubeGeometry();
 
-	// ── Frame UBO ──
+	// ── Frame UBO (ring) ──
+	for (int Slot = 0; Slot < FrameRingSize; ++Slot)
 	{
 		FRHIBufferDesc Desc;
 		Desc.Size = sizeof(FFrameUniforms);
 		Desc.Usage = ERHIBufferUsage::Uniform;
 		Desc.MemoryUsage = ERHIMemoryUsage::CPUToGPU;
-		S.FrameUniformBuf = S.RHI->CreateBuffer(Desc);
+		S.FrameUniformBuf[Slot] = S.RHI->CreateBuffer(Desc);
 	}
 
 	// ── Viewport texture ──
@@ -438,41 +447,44 @@ bool FForwardRendererFeature::EnsureShaderReady()
 		S.DrawPipeline = RHI->CreateGraphicsPipeline(Desc);
 	}
 
-	// ── Descriptor pool + sets ──
+	// ── Descriptor pool + sets (ring: one set per frame slot) ──
 	{
 		FRHIDescriptorPoolDesc Desc;
-		Desc.MaxSets = 3;
-		FRHIDescriptorPoolSize Sz1; Sz1.Type = ERHIDescriptorType::StorageBuffer; Sz1.Count = 3;
+		Desc.MaxSets = 3 * FrameRingSize;
+		FRHIDescriptorPoolSize Sz1; Sz1.Type = ERHIDescriptorType::StorageBuffer; Sz1.Count = 3 * FrameRingSize;
 		Desc.PoolSizes.push_back(Sz1);
-		FRHIDescriptorPoolSize Sz2; Sz2.Type = ERHIDescriptorType::UniformBuffer; Sz2.Count = 1;
+		FRHIDescriptorPoolSize Sz2; Sz2.Type = ERHIDescriptorType::UniformBuffer; Sz2.Count = FrameRingSize;
 		Desc.PoolSizes.push_back(Sz2);
 		S.DescPool = RHI->CreateDescriptorPool(Desc);
 	}
-	S.CullDescSet = RHI->AllocateDescriptorSet(S.DescPool, CullSetLayout);
-	S.DrawDescSet = RHI->AllocateDescriptorSet(S.DescPool, DrawSceneSetLayout);
-	S.FrameDescSet = RHI->AllocateDescriptorSet(S.DescPool, FrameSetLayout);
+	for (int Slot = 0; Slot < FrameRingSize; ++Slot)
+	{
+		S.CullDescSet[Slot] = RHI->AllocateDescriptorSet(S.DescPool, CullSetLayout);
+		S.DrawDescSet[Slot] = RHI->AllocateDescriptorSet(S.DescPool, DrawSceneSetLayout);
+		S.FrameDescSet[Slot] = RHI->AllocateDescriptorSet(S.DescPool, FrameSetLayout);
 
-	{
-		FRHIDescriptorWrite W{};
-		W.Set = S.CullDescSet; W.Binding = 0; W.Type = ERHIDescriptorType::StorageBuffer;
-		W.Buffer = S.SceneInstanceBuf; W.Range = sizeof(FGPUSceneInstance) * GPUSceneMaxInstances;
-		RHI->UpdateDescriptorSets(&W, 1);
-		FRHIDescriptorWrite W1{};
-		W1.Set = S.CullDescSet; W1.Binding = 1; W1.Type = ERHIDescriptorType::StorageBuffer;
-		W1.Buffer = S.IndirectArgsBuf; W1.Range = sizeof(FDrawIndexedIndirectArgs) * GPUSceneMaxDraws;
-		RHI->UpdateDescriptorSets(&W1, 1);
-	}
-	{
-		FRHIDescriptorWrite W{};
-		W.Set = S.DrawDescSet; W.Binding = 0; W.Type = ERHIDescriptorType::StorageBuffer;
-		W.Buffer = S.SceneInstanceBuf; W.Range = sizeof(FGPUSceneInstance) * GPUSceneMaxInstances;
-		RHI->UpdateDescriptorSets(&W, 1);
-	}
-	{
-		FRHIDescriptorWrite W{};
-		W.Set = S.FrameDescSet; W.Binding = 0; W.Type = ERHIDescriptorType::UniformBuffer;
-		W.Buffer = S.FrameUniformBuf; W.Range = sizeof(FFrameUniforms);
-		RHI->UpdateDescriptorSets(&W, 1);
+		{
+			FRHIDescriptorWrite W{};
+			W.Set = S.CullDescSet[Slot]; W.Binding = 0; W.Type = ERHIDescriptorType::StorageBuffer;
+			W.Buffer = S.SceneInstanceBuf[Slot]; W.Range = sizeof(FGPUSceneInstance) * GPUSceneMaxInstances;
+			RHI->UpdateDescriptorSets(&W, 1);
+			FRHIDescriptorWrite W1{};
+			W1.Set = S.CullDescSet[Slot]; W1.Binding = 1; W1.Type = ERHIDescriptorType::StorageBuffer;
+			W1.Buffer = S.IndirectArgsBuf[Slot]; W1.Range = sizeof(FDrawIndexedIndirectArgs) * GPUSceneMaxDraws;
+			RHI->UpdateDescriptorSets(&W1, 1);
+		}
+		{
+			FRHIDescriptorWrite W{};
+			W.Set = S.DrawDescSet[Slot]; W.Binding = 0; W.Type = ERHIDescriptorType::StorageBuffer;
+			W.Buffer = S.SceneInstanceBuf[Slot]; W.Range = sizeof(FGPUSceneInstance) * GPUSceneMaxInstances;
+			RHI->UpdateDescriptorSets(&W, 1);
+		}
+		{
+			FRHIDescriptorWrite W{};
+			W.Set = S.FrameDescSet[Slot]; W.Binding = 0; W.Type = ERHIDescriptorType::UniformBuffer;
+			W.Buffer = S.FrameUniformBuf[Slot]; W.Range = sizeof(FFrameUniforms);
+			RHI->UpdateDescriptorSets(&W, 1);
+		}
 	}
 
 	S.bShaderReady = true;
@@ -488,7 +500,12 @@ void FForwardRendererFeature::DestroyShaderResources()
 	if (!RHI) return;
 
 	if (S.DescPool)      { RHI->DestroyDescriptorPool(S.DescPool); S.DescPool = nullptr; }
-	S.CullDescSet = nullptr; S.DrawDescSet = nullptr; S.FrameDescSet = nullptr;
+	for (int Slot = 0; Slot < FrameRingSize; ++Slot)
+	{
+		S.CullDescSet[Slot] = nullptr;
+		S.DrawDescSet[Slot] = nullptr;
+		S.FrameDescSet[Slot] = nullptr;
+	}
 	if (S.DrawPipeline)  { RHI->DestroyGraphicsPipeline(S.DrawPipeline); S.DrawPipeline = nullptr; }
 	if (S.CullPipeline)  { RHI->DestroyComputePipeline(S.CullPipeline); S.CullPipeline = nullptr; }
 	if (S.DrawLayout)    { RHI->DestroyPipelineLayout(S.DrawLayout); S.DrawLayout = nullptr; }
@@ -537,6 +554,8 @@ void FForwardRendererFeature::ExecuteBeginFrame(FRDGBuilder& GB)
 	auto& S = *Ptr;
 	if (!S.RenderServer) return;
 	if (!EnsureShaderReady()) return;
+
+	const std::uint32_t Slot = static_cast<std::uint32_t>(S.RenderServer->GetCurrentFrameIndex() % FrameRingSize);
 
 	const FSceneUpdatePacket& Scene = S.RenderServer->GetCurrentScene();
 	if (Scene.Draws.empty()) return;
@@ -587,10 +606,10 @@ void FForwardRendererFeature::ExecuteBeginFrame(FRDGBuilder& GB)
 			}
 	}
 
-	// ── Declarative uploads (staging + copy passes, barriers auto-derived) ──
-	FRDGBuffer* RDGScene = GB.RegisterExternalBuffer(S.SceneInstanceBuf, ERHIResourceState::Common, "GPUSceneInstances");
-	FRDGBuffer* RDGIndirect = GB.RegisterExternalBuffer(S.IndirectArgsBuf, ERHIResourceState::Common, "IndirectArgs");
-	FRDGBuffer* RDGFrameUBO = GB.RegisterExternalBuffer(S.FrameUniformBuf, ERHIResourceState::Common, "FrameUBO");
+	// ── Declarative uploads (ring slot) ──
+	FRDGBuffer* RDGScene = GB.RegisterExternalBuffer(S.SceneInstanceBuf[Slot], ERHIResourceState::Common, "GPUSceneInstances");
+	FRDGBuffer* RDGIndirect = GB.RegisterExternalBuffer(S.IndirectArgsBuf[Slot], ERHIResourceState::Common, "IndirectArgs");
+	FRDGBuffer* RDGFrameUBO = GB.RegisterExternalBuffer(S.FrameUniformBuf[Slot], ERHIResourceState::Common, "FrameUBO");
 	GB.UploadBuffer(RDGScene, Instances.data(), Instances.size() * sizeof(FGPUSceneInstance));
 	GB.UploadBuffer(RDGIndirect, Empty.data(), Empty.size() * sizeof(FDrawIndexedIndirectArgs));
 	GB.UploadBuffer(RDGFrameUBO, &FrameUni, sizeof(FrameUni));
@@ -601,6 +620,8 @@ void FForwardRendererFeature::ExecuteBasePass(FRDGBuilder& GB)
 	auto& S = *Ptr;
 	if (!S.RenderServer) return;
 	if (!EnsureShaderReady()) return;
+
+	const std::uint32_t Slot = static_cast<std::uint32_t>(S.RenderServer->GetCurrentFrameIndex() % FrameRingSize);
 
 	const FSceneUpdatePacket& Scene = S.RenderServer->GetCurrentScene();
 	if (Scene.Draws.empty())
@@ -615,10 +636,10 @@ void FForwardRendererFeature::ExecuteBasePass(FRDGBuilder& GB)
 	ComputeFrustumPlanes(Scene.Camera, Scene.Camera.AspectRatio, CullParams);
 	CullParams.InstanceCount = static_cast<std::uint32_t>(Scene.Draws.size());
 
-	// ── RDG resources ──
-	FRDGBuffer* RDGScene = GB.RegisterExternalBuffer(S.SceneInstanceBuf, ERHIResourceState::Common, "GPUSceneInstances");
-	FRDGBuffer* RDGIndirect = GB.RegisterExternalBuffer(S.IndirectArgsBuf, ERHIResourceState::Common, "IndirectArgs");
-	FRDGBuffer* RDGFrameUBO = GB.RegisterExternalBuffer(S.FrameUniformBuf, ERHIResourceState::Common, "FrameUBO");
+	// ── RDG resources (ring slot) ──
+	FRDGBuffer* RDGScene = GB.RegisterExternalBuffer(S.SceneInstanceBuf[Slot], ERHIResourceState::Common, "GPUSceneInstances");
+	FRDGBuffer* RDGIndirect = GB.RegisterExternalBuffer(S.IndirectArgsBuf[Slot], ERHIResourceState::Common, "IndirectArgs");
+	FRDGBuffer* RDGFrameUBO = GB.RegisterExternalBuffer(S.FrameUniformBuf[Slot], ERHIResourceState::Common, "FrameUBO");
 	FRDGTexture* RDGViewport = GB.RegisterExternalTexture(S.ViewportTex, ERHIResourceState::ShaderResource, "ViewportTex");
 
 	// ── Compute pass: culling → indirect args ──
@@ -627,10 +648,10 @@ void FForwardRendererFeature::ExecuteBasePass(FRDGBuilder& GB)
 		Params.Reads = { { RDGScene, ERHIResourceState::UnorderedAccess } };
 		Params.Writes = { { RDGIndirect, ERHIResourceState::UnorderedAccess } };
 		GB.AddComputePass("ForwardCull", Params,
-			[&S, CullParams, NumInstances = CullParams.InstanceCount](FRHICommandList& Cmd) mutable
+			[&S, Slot, CullParams, NumInstances = CullParams.InstanceCount](FRHICommandList& Cmd) mutable
 			{
 				Cmd.BindComputePipeline(S.CullPipeline);
-				FRHIDescriptorSet* Sets[] = { S.CullDescSet };
+				FRHIDescriptorSet* Sets[] = { S.CullDescSet[Slot] };
 				Cmd.BindDescriptorSets(0, Sets, 1);
 				Cmd.PushConstants(ERHIShaderStage::Compute, 0, sizeof(CullParams), &CullParams);
 				std::uint32_t Groups = (NumInstances + 63) / 64;
@@ -659,16 +680,16 @@ void FForwardRendererFeature::ExecuteBasePass(FRDGBuilder& GB)
 		Params.RenderTargets = { RT };
 
 		GB.AddRasterPass("ForwardDraw", Params,
-			[&S, MaxDraws = GPUSceneMaxDraws](FRHICommandList& Cmd) mutable
+			[&S, Slot, MaxDraws = GPUSceneMaxDraws](FRHICommandList& Cmd) mutable
 			{
 				Cmd.BindGraphicsPipeline(S.DrawPipeline);
-				FRHIDescriptorSet* Sets[] = { S.FrameDescSet, S.DrawDescSet };
+				FRHIDescriptorSet* Sets[] = { S.FrameDescSet[Slot], S.DrawDescSet[Slot] };
 				Cmd.BindDescriptorSets(0, Sets, 2);
 				Cmd.BindVertexBuffer(0, S.CubeVBO);
 				Cmd.BindIndexBuffer(S.CubeIBO, 0, true);
 				Cmd.SetViewport(0.0f, 0.0f, static_cast<float>(S.VpWidth), static_cast<float>(S.VpHeight));
 				Cmd.SetScissor(0, 0, S.VpWidth, S.VpHeight);
-				Cmd.DrawIndexedIndirect(S.IndirectArgsBuf, 0, MaxDraws, sizeof(FDrawIndexedIndirectArgs));
+				Cmd.DrawIndexedIndirect(S.IndirectArgsBuf[Slot], 0, MaxDraws, sizeof(FDrawIndexedIndirectArgs));
 			});
 	}
 }

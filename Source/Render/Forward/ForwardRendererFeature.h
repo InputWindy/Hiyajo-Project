@@ -59,6 +59,8 @@ public:
 	void MarkShaderDirty() { Ptr->bShaderReady = false; }
 
 private:
+	static constexpr int FrameRingSize = 3;
+
 	struct FImpl
 	{
 		bool bInitialized = false;
@@ -66,12 +68,12 @@ private:
 		IRHI* RHI = nullptr;
 		FRenderServer* RenderServer = nullptr;
 
-		// ── GPU Scene ──
-		FRHIBuffer* SceneInstanceBuf = nullptr;   // storage, CPUToGPU upload each frame
-		FRHIBuffer* IndirectArgsBuf = nullptr;    // storage + indirect, compute writes
-		FRHIBuffer* CubeVBO = nullptr;            // static unit-cube vertices
-		FRHIBuffer* CubeIBO = nullptr;            // static unit-cube indices
-		FRHIBuffer* FrameUniformBuf = nullptr;    // view/proj UBO
+		// ── GPU Scene (ring buffer — one slot per frame in flight) ──
+		FRHIBuffer* SceneInstanceBuf[FrameRingSize] = {};   // storage, uploaded each frame
+		FRHIBuffer* IndirectArgsBuf[FrameRingSize] = {};    // storage + indirect, compute writes
+		FRHIBuffer* FrameUniformBuf[FrameRingSize] = {};    // view/proj UBO
+		FRHIBuffer* CubeVBO = nullptr;                      // static unit-cube vertices
+		FRHIBuffer* CubeIBO = nullptr;                      // static unit-cube indices
 
 		std::uint32_t CubeIndexCount = 0;
 
@@ -81,18 +83,14 @@ private:
 		FImGuiTextureHandle GameViewImGuiTexture;
 
 		// ── Pipelines + descriptors ──
-		std::unique_ptr<FShaderDatabase> ShaderDb;
-		std::unordered_map<std::uint64_t, struct FBatchResources*> Batches;
 		FRHIComputePipeline* CullPipeline = nullptr;
 		FRHIGraphicsPipeline* DrawPipeline = nullptr;
-		FRHIDescriptorSetLayout* SceneSetLayout = nullptr;
-		FRHIDescriptorSetLayout* FrameSetLayout = nullptr;
 		FRHIPipelineLayout* CullLayout = nullptr;
 		FRHIPipelineLayout* DrawLayout = nullptr;
 		FRHIDescriptorPool* DescPool = nullptr;
-		FRHIDescriptorSet* CullDescSet = nullptr;   // scene SSBO + indirect SSBO
-		FRHIDescriptorSet* DrawDescSet = nullptr;   // scene SSBO
-		FRHIDescriptorSet* FrameDescSet = nullptr;  // frame UBO
+		FRHIDescriptorSet* CullDescSet[FrameRingSize] = {};   // scene SSBO + indirect SSBO
+		FRHIDescriptorSet* DrawDescSet[FrameRingSize] = {};   // scene SSBO
+		FRHIDescriptorSet* FrameDescSet[FrameRingSize] = {};  // frame UBO
 
 		std::uint32_t VpWidth = 600;
 		std::uint32_t VpHeight = 400;
