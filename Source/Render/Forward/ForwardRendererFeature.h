@@ -66,7 +66,7 @@ public:
 
 	bool OnRegister(FRenderServer& RenderServer) override;
 	void OnUnregister(FRenderServer& RenderServer) override;
-	void ExecuteStage(ERenderPipelineStage Stage, const FForwardDrawContext& Context, FRDGBuilder& GB);
+	void ExecuteStage(ERenderPipelineStage Stage, const FForwardDrawContext& Context, FFrameContext& FrameCtx, FRDGBuilder& GB);
 
 	/** Mark shader dirty so next frame recompiles (hot-reload from editor). */
 	void MarkShaderDirty() { Ptr->bShaderReady = false; }
@@ -82,9 +82,8 @@ private:
 		FRenderServer* RenderServer = nullptr;
 
 		// ── GPU Scene (ring buffer — one slot per frame in flight) ──
-		FRHIBuffer* SceneInstanceBuf[FrameRingSize] = {};   // storage, uploaded each frame
-		FRHIBuffer* IndirectArgsBuf[FrameRingSize] = {};    // storage + indirect, compute writes
 		FRHIBuffer* FrameUniformBuf[FrameRingSize] = {};    // view/proj UBO
+		FRHIBuffer* ObjectUniformBuf[FrameRingSize] = {};   // per-object LocalToWorld UBO
 		FRHIBuffer* CubeVBO = nullptr;                      // static unit-cube vertices
 		FRHIBuffer* CubeIBO = nullptr;                      // static unit-cube indices
 
@@ -96,13 +95,10 @@ private:
 		FImGuiTextureHandle GameViewImGuiTexture;
 
 		// ── Pipelines + descriptors ──
-		FRHIComputePipeline* CullPipeline = nullptr;
 		FRHIGraphicsPipeline* DrawPipeline = nullptr;
-		FRHIPipelineLayout* CullLayout = nullptr;
 		FRHIPipelineLayout* DrawLayout = nullptr;
 		FRHIDescriptorPool* DescPool = nullptr;
-		FRHIDescriptorSet* CullDescSet[FrameRingSize] = {};   // scene SSBO + indirect SSBO
-		FRHIDescriptorSet* DrawDescSet[FrameRingSize] = {};   // scene SSBO
+		FRHIDescriptorSet* DrawDescSet[FrameRingSize] = {};   // object UBO
 		FRHIDescriptorSet* FrameDescSet[FrameRingSize] = {};  // frame UBO
 
 		std::uint32_t VpWidth = 600;
@@ -115,8 +111,8 @@ private:
 	bool EnsureShaderReady();
 	void DestroyShaderResources();
 	void BuildCubeGeometry();
-	void ExecuteBeginFrame(const FForwardDrawContext& Context, FRDGBuilder& GB);
-	void ExecuteBasePass(const FForwardDrawContext& Context, FRDGBuilder& GB);
+	void ExecuteBeginFrame(const FForwardDrawContext& Context, FFrameContext& FrameCtx, FRDGBuilder& GB);
+	void ExecuteBasePass(const FForwardDrawContext& Context, FFrameContext& FrameCtx, FRDGBuilder& GB);
 	void ComputeFrustumPlanes(const struct FCameraFrameData& Camera, float Aspect, FGPUCullParams& OutParams);
 };
 

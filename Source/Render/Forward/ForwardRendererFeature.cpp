@@ -42,49 +42,12 @@ static void DebugLog(const char* Msg)
 	}
 }
 
-/** 24 cube vertices (pos + color), 36 indices. */
-static const FGPUCubeVertex CubeVertices[] =
+/** Minimal triangle (3 vertices) for the draw-path diagnostic. */
+static const FGPUCubeVertex TriangleVertices[] =
 {
-	// +X face
-	{ { 0.5f, -0.5f, -0.5f }, { 1.f, 0.f, 0.f } },
-	{ { 0.5f,  0.5f, -0.5f }, { 1.f, 0.f, 0.f } },
-	{ { 0.5f,  0.5f,  0.5f }, { 1.f, 0.f, 0.f } },
-	{ { 0.5f, -0.5f,  0.5f }, { 1.f, 0.f, 0.f } },
-	// -X face
-	{ { -0.5f, -0.5f,  0.5f }, { 0.f, 1.f, 0.f } },
-	{ { -0.5f,  0.5f,  0.5f }, { 0.f, 1.f, 0.f } },
-	{ { -0.5f,  0.5f, -0.5f }, { 0.f, 1.f, 0.f } },
-	{ { -0.5f, -0.5f, -0.5f }, { 0.f, 1.f, 0.f } },
-	// +Y face
-	{ { -0.5f,  0.5f, -0.5f }, { 0.f, 0.f, 1.f } },
-	{ { -0.5f,  0.5f,  0.5f }, { 0.f, 0.f, 1.f } },
-	{ {  0.5f,  0.5f,  0.5f }, { 0.f, 0.f, 1.f } },
-	{ {  0.5f,  0.5f, -0.5f }, { 0.f, 0.f, 1.f } },
-	// -Y face
-	{ {  0.5f, -0.5f,  0.5f }, { 1.f, 1.f, 0.f } },
-	{ {  0.5f, -0.5f, -0.5f }, { 1.f, 1.f, 0.f } },
-	{ { -0.5f, -0.5f, -0.5f }, { 1.f, 1.f, 0.f } },
-	{ { -0.5f, -0.5f,  0.5f }, { 1.f, 1.f, 0.f } },
-	// +Z face
-	{ {  0.5f,  0.5f,  0.5f }, { 0.f, 1.f, 1.f } },
-	{ { -0.5f,  0.5f,  0.5f }, { 0.f, 1.f, 1.f } },
-	{ { -0.5f, -0.5f,  0.5f }, { 0.f, 1.f, 1.f } },
-	{ {  0.5f, -0.5f,  0.5f }, { 0.f, 1.f, 1.f } },
-	// -Z face
-	{ { -0.5f,  0.5f, -0.5f }, { 1.f, 0.f, 1.f } },
-	{ {  0.5f,  0.5f, -0.5f }, { 1.f, 0.f, 1.f } },
-	{ {  0.5f, -0.5f, -0.5f }, { 1.f, 0.f, 1.f } },
-	{ { -0.5f, -0.5f, -0.5f }, { 1.f, 0.f, 1.f } },
-};
-
-static const std::uint32_t CubeIndices[] =
-{
-	0,1,2, 0,2,3,    // +X
-	4,5,6, 4,6,7,    // -X
-	8,9,10, 8,10,11, // +Y
-	12,13,14, 12,14,15, // -Y
-	16,17,18, 16,18,19, // +Z
-	20,21,22, 20,22,23, // -Z
+	{ {  0.0f,  0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f } },
+	{ {  0.5f, -0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f } },
+	{ { -0.5f, -0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f } },
 };
 
 static std::string LoadTextFile(const std::string& Path)
@@ -212,14 +175,10 @@ void FForwardRendererFeature::OnUnregister(FRenderServer& RenderServer)
 	for (int Slot = 0; Slot < FrameRingSize; ++Slot)
 	{
 		if (S.FrameUniformBuf[Slot])  { RHI->DestroyBuffer(S.FrameUniformBuf[Slot]); S.FrameUniformBuf[Slot] = nullptr; }
+		if (S.ObjectUniformBuf[Slot]) { RHI->DestroyBuffer(S.ObjectUniformBuf[Slot]); S.ObjectUniformBuf[Slot] = nullptr; }
 	}
 	if (S.CubeIBO)           { RHI->DestroyBuffer(S.CubeIBO); S.CubeIBO = nullptr; }
 	if (S.CubeVBO)           { RHI->DestroyBuffer(S.CubeVBO); S.CubeVBO = nullptr; }
-	for (int Slot = 0; Slot < FrameRingSize; ++Slot)
-	{
-		if (S.IndirectArgsBuf[Slot])  { RHI->DestroyBuffer(S.IndirectArgsBuf[Slot]); S.IndirectArgsBuf[Slot] = nullptr; }
-		if (S.SceneInstanceBuf[Slot]) { RHI->DestroyBuffer(S.SceneInstanceBuf[Slot]); S.SceneInstanceBuf[Slot] = nullptr; }
-	}
 
 	S.bInitialized = false;
 }
@@ -231,20 +190,11 @@ void FForwardRendererFeature::BuildCubeGeometry()
 
 	{
 		FRHIBufferDesc Desc;
-		Desc.Size = sizeof(CubeVertices);
+		Desc.Size = sizeof(TriangleVertices);
 		Desc.Usage = ERHIBufferUsage::Vertex;
 		Desc.MemoryUsage = ERHIMemoryUsage::CPUToGPU;
 		S.CubeVBO = RHI->CreateBuffer(Desc);
-		RHI->UpdateBuffer(S.CubeVBO, 0, sizeof(CubeVertices), CubeVertices);
-	}
-	{
-		FRHIBufferDesc Desc;
-		Desc.Size = sizeof(CubeIndices);
-		Desc.Usage = ERHIBufferUsage::Index;
-		Desc.MemoryUsage = ERHIMemoryUsage::CPUToGPU;
-		S.CubeIBO = RHI->CreateBuffer(Desc);
-		RHI->UpdateBuffer(S.CubeIBO, 0, sizeof(CubeIndices), CubeIndices);
-		S.CubeIndexCount = static_cast<std::uint32_t>(sizeof(CubeIndices) / sizeof(std::uint32_t));
+		RHI->UpdateBuffer(S.CubeVBO, 0, sizeof(TriangleVertices), TriangleVertices);
 	}
 }
 
@@ -257,27 +207,9 @@ bool FForwardRendererFeature::SetupPersistentResources(FRenderServer& RenderServ
 	S.RenderServer = &RenderServer;
 	if (!S.RHI) return false;
 
-	// ── GPU scene buffers (ring: one slot per frame in flight) ──
-	for (int Slot = 0; Slot < FrameRingSize; ++Slot)
-	{
-		FRHIBufferDesc Desc;
-		Desc.Size = sizeof(FGPUSceneInstance) * GPUSceneMaxInstances;
-		Desc.Usage = ERHIBufferUsage::Storage;
-		Desc.MemoryUsage = ERHIMemoryUsage::CPUToGPU;
-		S.SceneInstanceBuf[Slot] = S.RHI->CreateBuffer(Desc);
-	}
-	for (int Slot = 0; Slot < FrameRingSize; ++Slot)
-	{
-		FRHIBufferDesc Desc;
-		Desc.Size = sizeof(FDrawIndexedIndirectArgs) * GPUSceneMaxDraws;
-		Desc.Usage = ERHIBufferUsage::Storage | ERHIBufferUsage::Indirect;
-		Desc.MemoryUsage = ERHIMemoryUsage::CPUToGPU;
-		S.IndirectArgsBuf[Slot] = S.RHI->CreateBuffer(Desc);
-	}
-
 	BuildCubeGeometry();
 
-	// ── Frame UBO (ring) ──
+	// ── Frame UBO + Object UBO (ring) ──
 	for (int Slot = 0; Slot < FrameRingSize; ++Slot)
 	{
 		FRHIBufferDesc Desc;
@@ -285,6 +217,19 @@ bool FForwardRendererFeature::SetupPersistentResources(FRenderServer& RenderServ
 		Desc.Usage = ERHIBufferUsage::Uniform;
 		Desc.MemoryUsage = ERHIMemoryUsage::CPUToGPU;
 		S.FrameUniformBuf[Slot] = S.RHI->CreateBuffer(Desc);
+	}
+	for (int Slot = 0; Slot < FrameRingSize; ++Slot)
+	{
+		FRHIBufferDesc Desc;
+		Desc.Size = sizeof(FObjectUniforms);
+		Desc.Usage = ERHIBufferUsage::Uniform;
+		Desc.MemoryUsage = ERHIMemoryUsage::CPUToGPU;
+		S.ObjectUniformBuf[Slot] = S.RHI->CreateBuffer(Desc);
+
+		FObjectUniforms Obj{};
+		Obj.LocalToWorld[0] = Obj.LocalToWorld[5] = Obj.LocalToWorld[10] = Obj.LocalToWorld[15] = 1.0f;
+		Obj.LocalToWorldInverseTranspose[0] = Obj.LocalToWorldInverseTranspose[5] = Obj.LocalToWorldInverseTranspose[10] = Obj.LocalToWorldInverseTranspose[15] = 1.0f;
+		S.RHI->UpdateBuffer(S.ObjectUniformBuf[Slot], 0, sizeof(FObjectUniforms), &Obj);
 	}
 
 	// ── Viewport texture ──
@@ -340,27 +285,6 @@ bool FForwardRendererFeature::EnsureShaderReady()
 
 	const FConfig& Config = GApp->GetConfig();
 
-	// ── Compile compute (culling) shader ──
-	const std::string CullSrc = LoadTextFile(Config.ProjectShadersDir + "/Forward/ForwardCulling.comp");
-	if (CullSrc.empty())
-	{
-		DebugLog((std::string("ForwardRenderer: cull shader NOT FOUND at ") + Config.ProjectShadersDir + "/Forward/ForwardCulling.comp").c_str());
-		MAHO_CORE_ERROR("ForwardRenderer: missing Forward/ForwardCulling.comp");
-		return false;
-	}
-	DebugLog("ForwardRenderer: cull shader source loaded");
-
-	FShaderCompileDesc CullDesc;
-	CullDesc.Source = CullSrc;
-	FShaderCompileResult CullResult = FShaderCompiler::CompileStage(CullDesc, ERHIShaderStage::Compute, "main");
-	if (!CullResult.bSuccess)
-	{
-		DebugLog((std::string("ForwardRenderer: cull compile FAILED: ") + CullResult.ErrorLog).c_str());
-		MAHO_CORE_ERROR("ForwardRenderer: cull shader compile failed: {}", CullResult.ErrorLog);
-		return false;
-	}
-	DebugLog("ForwardRenderer: cull compile OK");
-
 	// ── Compile vertex shader ──
 	const std::string VertSrc = LoadTextFile(Config.ProjectShadersDir + "/Forward/Forward.vert");
 	if (VertSrc.empty())
@@ -400,12 +324,6 @@ bool FForwardRendererFeature::EnsureShaderReady()
 	IRHI* RHI = S.RHI;
 
 	// ── Shader modules ──
-	FRHIShaderModuleDesc CsDesc;
-	CsDesc.Stage = ERHIShaderStage::Compute;
-	CsDesc.Bytecode = CullResult.Bytecode.data();
-	CsDesc.BytecodeSize = CullResult.Bytecode.size() * sizeof(std::uint32_t);
-	FRHIShaderModule* CsModule = RHI->CreateShaderModule(CsDesc);
-
 	FRHIShaderModuleDesc VsDesc;
 	VsDesc.Stage = ERHIShaderStage::Vertex;
 	VsDesc.Bytecode = VertResult.Bytecode.data();
@@ -419,28 +337,14 @@ bool FForwardRendererFeature::EnsureShaderReady()
 	FRHIShaderModule* FsModule = RHI->CreateShaderModule(FsDesc);
 
 	// ── Descriptor set layouts ──
-	// Cull set: [0]=scene SSBO(read), [1]=indirect SSBO(write)
-	FRHIDescriptorSetLayout* CullSetLayout;
-	{
-		FRHIDescriptorSetLayoutDesc Desc;
-		FRHIDescriptorBinding B0;
-		B0.Binding = 0; B0.Type = ERHIDescriptorType::StorageBuffer; B0.Count = 1; B0.Stages = ERHIShaderStage::Compute;
-		Desc.Bindings.push_back(B0);
-		FRHIDescriptorBinding B1;
-		B1.Binding = 1; B1.Type = ERHIDescriptorType::StorageBuffer; B1.Count = 1; B1.Stages = ERHIShaderStage::Compute;
-		Desc.Bindings.push_back(B1);
-		CullSetLayout = RHI->CreateDescriptorSetLayout(Desc);
-	}
-
-	// Draw set: [0]=scene SSBO(read) + frame UBO in a second set
-	FRHIDescriptorSetLayout* DrawSceneSetLayout;
+	FRHIDescriptorSetLayout* ObjectSetLayout;
 	FRHIDescriptorSetLayout* FrameSetLayout;
 	{
 		FRHIDescriptorSetLayoutDesc Desc;
 		FRHIDescriptorBinding B0;
-		B0.Binding = 0; B0.Type = ERHIDescriptorType::StorageBuffer; B0.Count = 1; B0.Stages = ERHIShaderStage::Vertex;
+		B0.Binding = 0; B0.Type = ERHIDescriptorType::UniformBuffer; B0.Count = 1; B0.Stages = ERHIShaderStage::Vertex;
 		Desc.Bindings.push_back(B0);
-		DrawSceneSetLayout = RHI->CreateDescriptorSetLayout(Desc);
+		ObjectSetLayout = RHI->CreateDescriptorSetLayout(Desc);
 	}
 	{
 		FRHIDescriptorSetLayoutDesc Desc;
@@ -450,29 +354,11 @@ bool FForwardRendererFeature::EnsureShaderReady()
 		FrameSetLayout = RHI->CreateDescriptorSetLayout(Desc);
 	}
 
-	// ── Pipeline layouts ──
+	// ── Pipeline layout ──
 	{
 		FRHIPipelineLayoutDesc Desc;
-		Desc.SetLayouts = { CullSetLayout };
-		FRHIPushConstantRange PC;
-		PC.Stages = ERHIShaderStage::Compute;
-		PC.Offset = 0;
-		PC.Size = sizeof(FGPUCullParams);
-		Desc.PushConstants.push_back(PC);
-		S.CullLayout = RHI->CreatePipelineLayout(Desc);
-	}
-	{
-		FRHIPipelineLayoutDesc Desc;
-		Desc.SetLayouts = { FrameSetLayout, DrawSceneSetLayout };
+		Desc.SetLayouts = { FrameSetLayout, ObjectSetLayout };
 		S.DrawLayout = RHI->CreatePipelineLayout(Desc);
-	}
-
-	// ── Compute pipeline (culling) ──
-	{
-		FRHIComputePipelineDesc Desc;
-		Desc.ComputeShader = CsModule;
-		Desc.Layout = S.CullLayout;
-		S.CullPipeline = RHI->CreateComputePipeline(Desc);
 	}
 
 	// ── Graphics pipeline (forward) ──
@@ -483,7 +369,7 @@ bool FForwardRendererFeature::EnsureShaderReady()
 		Desc.Layout = S.DrawLayout;
 		Desc.Topology = ERHIPrimitiveTopology::TriangleList;
 		Desc.VertexStride = sizeof(FGPUCubeVertex);
-		Desc.CullMode = ERHICullMode::Back;
+		Desc.CullMode = ERHICullMode::None;   // TEMP: disable culling — winding may be flipped
 
 		FRHIVertexAttribute Pos;
 		Pos.Location = 0; Pos.Format = ERHIFormat::R32G32B32_SFLOAT; Pos.Offset = 0;
@@ -500,33 +386,20 @@ bool FForwardRendererFeature::EnsureShaderReady()
 	// ── Descriptor pool + sets (ring: one set per frame slot) ──
 	{
 		FRHIDescriptorPoolDesc Desc;
-		Desc.MaxSets = 3 * FrameRingSize;
-		FRHIDescriptorPoolSize Sz1; Sz1.Type = ERHIDescriptorType::StorageBuffer; Sz1.Count = 3 * FrameRingSize;
-		Desc.PoolSizes.push_back(Sz1);
-		FRHIDescriptorPoolSize Sz2; Sz2.Type = ERHIDescriptorType::UniformBuffer; Sz2.Count = FrameRingSize;
-		Desc.PoolSizes.push_back(Sz2);
+		Desc.MaxSets = 2 * FrameRingSize;
+		FRHIDescriptorPoolSize Sz; Sz.Type = ERHIDescriptorType::UniformBuffer; Sz.Count = 2 * FrameRingSize;
+		Desc.PoolSizes.push_back(Sz);
 		S.DescPool = RHI->CreateDescriptorPool(Desc);
 	}
 	for (int Slot = 0; Slot < FrameRingSize; ++Slot)
 	{
-		S.CullDescSet[Slot] = RHI->AllocateDescriptorSet(S.DescPool, CullSetLayout);
-		S.DrawDescSet[Slot] = RHI->AllocateDescriptorSet(S.DescPool, DrawSceneSetLayout);
+		S.DrawDescSet[Slot] = RHI->AllocateDescriptorSet(S.DescPool, ObjectSetLayout);
 		S.FrameDescSet[Slot] = RHI->AllocateDescriptorSet(S.DescPool, FrameSetLayout);
 
 		{
 			FRHIDescriptorWrite W{};
-			W.Set = S.CullDescSet[Slot]; W.Binding = 0; W.Type = ERHIDescriptorType::StorageBuffer;
-			W.Buffer = S.SceneInstanceBuf[Slot]; W.Range = sizeof(FGPUSceneInstance) * GPUSceneMaxInstances;
-			RHI->UpdateDescriptorSets(&W, 1);
-			FRHIDescriptorWrite W1{};
-			W1.Set = S.CullDescSet[Slot]; W1.Binding = 1; W1.Type = ERHIDescriptorType::StorageBuffer;
-			W1.Buffer = S.IndirectArgsBuf[Slot]; W1.Range = sizeof(FDrawIndexedIndirectArgs) * GPUSceneMaxDraws;
-			RHI->UpdateDescriptorSets(&W1, 1);
-		}
-		{
-			FRHIDescriptorWrite W{};
-			W.Set = S.DrawDescSet[Slot]; W.Binding = 0; W.Type = ERHIDescriptorType::StorageBuffer;
-			W.Buffer = S.SceneInstanceBuf[Slot]; W.Range = sizeof(FGPUSceneInstance) * GPUSceneMaxInstances;
+			W.Set = S.DrawDescSet[Slot]; W.Binding = 0; W.Type = ERHIDescriptorType::UniformBuffer;
+			W.Buffer = S.ObjectUniformBuf[Slot]; W.Range = sizeof(FObjectUniforms);
 			RHI->UpdateDescriptorSets(&W, 1);
 		}
 		{
@@ -539,6 +412,7 @@ bool FForwardRendererFeature::EnsureShaderReady()
 
 	S.bShaderReady = true;
 	DebugLog("ForwardRenderer: shaders + pipelines READY");
+	DebugLog((std::string("ForwardRenderer: DrawPipeline=") + (S.DrawPipeline ? "OK" : "NULL") + " VBO=" + (S.CubeVBO ? "OK" : "NULL") + " IBO=" + (S.CubeIBO ? "OK" : "NULL") + " DrawDescSet[0]=" + (S.DrawDescSet[0] ? "OK" : "NULL") + " FrameDescSet[0]=" + (S.FrameDescSet[0] ? "OK" : "NULL")).c_str());
 	MAHO_CORE_INFO("ForwardRenderer: shaders compiled + pipelines ready");
 	return true;
 }
@@ -552,14 +426,11 @@ void FForwardRendererFeature::DestroyShaderResources()
 	if (S.DescPool)      { RHI->DestroyDescriptorPool(S.DescPool); S.DescPool = nullptr; }
 	for (int Slot = 0; Slot < FrameRingSize; ++Slot)
 	{
-		S.CullDescSet[Slot] = nullptr;
 		S.DrawDescSet[Slot] = nullptr;
 		S.FrameDescSet[Slot] = nullptr;
 	}
 	if (S.DrawPipeline)  { RHI->DestroyGraphicsPipeline(S.DrawPipeline); S.DrawPipeline = nullptr; }
-	if (S.CullPipeline)  { RHI->DestroyComputePipeline(S.CullPipeline); S.CullPipeline = nullptr; }
 	if (S.DrawLayout)    { RHI->DestroyPipelineLayout(S.DrawLayout); S.DrawLayout = nullptr; }
-	if (S.CullLayout)    { RHI->DestroyPipelineLayout(S.CullLayout); S.CullLayout = nullptr; }
 	S.bShaderReady = false;
 }
 
@@ -587,56 +458,28 @@ void FForwardRendererFeature::ComputeFrustumPlanes(const FCameraFrameData& Camer
 	ExtractFrustumPlanes(ViewProj, OutParams.FrustumPlanes);
 }
 
-void FForwardRendererFeature::ExecuteStage(ERenderPipelineStage Stage, const FForwardDrawContext& Context, FRDGBuilder& GB)
+void FForwardRendererFeature::ExecuteStage(ERenderPipelineStage Stage, const FForwardDrawContext& Context, FFrameContext& FrameCtx, FRDGBuilder& GB)
 {
 	if (!Ptr->bInitialized) return;
 
 	switch (Stage)
 	{
-	case ERenderPipelineStage::BeginFrame: DebugLog("ForwardRenderer: stage BeginFrame"); ExecuteBeginFrame(Context, GB); break;
-	case ERenderPipelineStage::BasePass:   DebugLog("ForwardRenderer: stage BasePass");   ExecuteBasePass(Context, GB);   break;
+	case ERenderPipelineStage::BeginFrame: DebugLog("ForwardRenderer: stage BeginFrame"); ExecuteBeginFrame(Context, FrameCtx, GB); break;
+	case ERenderPipelineStage::BasePass:   DebugLog("ForwardRenderer: stage BasePass");   ExecuteBasePass(Context, FrameCtx, GB);   break;
 	default: break;
 	}
 }
 
-void FForwardRendererFeature::ExecuteBeginFrame(const FForwardDrawContext& Context, FRDGBuilder& GB)
+void FForwardRendererFeature::ExecuteBeginFrame(const FForwardDrawContext& Context, FFrameContext& FrameCtx, FRDGBuilder& GB)
 {
 	auto& S = *Ptr;
 	if (!S.RenderServer) return;
 	if (!EnsureShaderReady()) return;
 
-	const std::uint32_t Slot = static_cast<std::uint32_t>(S.RenderServer->GetCurrentFrameIndex() % FrameRingSize);
+	const std::uint32_t Slot = static_cast<std::uint32_t>(FrameCtx.FrameIndex % FrameRingSize);
 
 	const auto& Scene = Context;
 	if (Scene.Draws.empty()) return;
-
-	const std::uint32_t NumInstances = static_cast<std::uint32_t>(Scene.Draws.size());
-	if (NumInstances > GPUSceneMaxInstances) return;
-	DebugLog((std::string("ForwardRenderer: BeginFrame uploading ") + std::to_string(NumInstances) + " instances").c_str());
-	MAHO_CORE_INFO("ForwardRenderer: BeginFrame uploading {} instances", NumInstances);
-
-	// ── Build GPU scene instances ──
-	std::vector<FGPUSceneInstance> Instances(NumInstances);
-	for (std::uint32_t I = 0; I < NumInstances; ++I)
-	{
-		const FSceneDrawItem& Item = Scene.Draws[I];
-		std::memcpy(Instances[I].LocalToWorld, Item.LocalToWorld, sizeof(Item.LocalToWorld));
-		Instances[I].Color[0] = 0.8f;
-		Instances[I].Color[1] = 0.6f;
-		Instances[I].Color[2] = 0.3f;
-		Instances[I].Color[3] = 1.0f;
-	}
-
-	// ── Empty indirect commands (InstanceCount=0) — invisible draws are no-ops ──
-	std::vector<FDrawIndexedIndirectArgs> Empty(GPUSceneMaxDraws);
-	for (auto& E : Empty)
-	{
-		E.IndexCount = S.CubeIndexCount;
-		E.InstanceCount = 0;
-		E.FirstIndex = 0;
-		E.VertexOffset = 0;
-		E.FirstInstance = 0;
-	}
 
 	// ── Frame uniforms ──
 	FFrameUniforms FrameUni{};
@@ -656,22 +499,17 @@ void FForwardRendererFeature::ExecuteBeginFrame(const FForwardDrawContext& Conte
 			}
 	}
 
-	// ── Declarative uploads (ring slot) ──
-	FRDGBuffer* RDGScene = GB.RegisterExternalBuffer(S.SceneInstanceBuf[Slot], ERHIResourceState::Common, "GPUSceneInstances");
-	FRDGBuffer* RDGIndirect = GB.RegisterExternalBuffer(S.IndirectArgsBuf[Slot], ERHIResourceState::Common, "IndirectArgs");
 	FRDGBuffer* RDGFrameUBO = GB.RegisterExternalBuffer(S.FrameUniformBuf[Slot], ERHIResourceState::Common, "FrameUBO");
-	GB.UploadBuffer(RDGScene, Instances.data(), Instances.size() * sizeof(FGPUSceneInstance));
-	GB.UploadBuffer(RDGIndirect, Empty.data(), Empty.size() * sizeof(FDrawIndexedIndirectArgs));
 	GB.UploadBuffer(RDGFrameUBO, &FrameUni, sizeof(FrameUni));
 }
 
-void FForwardRendererFeature::ExecuteBasePass(const FForwardDrawContext& Context, FRDGBuilder& GB)
+void FForwardRendererFeature::ExecuteBasePass(const FForwardDrawContext& Context, FFrameContext& FrameCtx, FRDGBuilder& GB)
 {
 	auto& S = *Ptr;
 	if (!S.RenderServer) return;
 	if (!EnsureShaderReady()) return;
 
-	const std::uint32_t Slot = static_cast<std::uint32_t>(S.RenderServer->GetCurrentFrameIndex() % FrameRingSize);
+	const std::uint32_t Slot = static_cast<std::uint32_t>(FrameCtx.FrameIndex % FrameRingSize);
 
 	const auto& Scene = Context;
 	if (Scene.Draws.empty())
@@ -679,42 +517,15 @@ void FForwardRendererFeature::ExecuteBasePass(const FForwardDrawContext& Context
 		DebugLog("ForwardRenderer: BasePass — scene has NO draws");
 		return;
 	}
-	DebugLog((std::string("ForwardRenderer: BasePass culling ") + std::to_string(Scene.Draws.size()) + " instances").c_str());
-
-	// ── Cull params (push constants) ──
-	FGPUCullParams CullParams{};
-	ComputeFrustumPlanes(Scene.Camera, Scene.Camera.AspectRatio, CullParams);
-	CullParams.InstanceCount = static_cast<std::uint32_t>(Scene.Draws.size());
 
 	// ── RDG resources (ring slot) ──
-	FRDGBuffer* RDGScene = GB.RegisterExternalBuffer(S.SceneInstanceBuf[Slot], ERHIResourceState::Common, "GPUSceneInstances");
-	FRDGBuffer* RDGIndirect = GB.RegisterExternalBuffer(S.IndirectArgsBuf[Slot], ERHIResourceState::Common, "IndirectArgs");
 	FRDGBuffer* RDGFrameUBO = GB.RegisterExternalBuffer(S.FrameUniformBuf[Slot], ERHIResourceState::Common, "FrameUBO");
 	FRDGTexture* RDGViewport = GB.RegisterExternalTexture(S.ViewportTex, ERHIResourceState::ShaderResource, "ViewportTex");
 
-	// ── Compute pass: culling → indirect args ──
-	{
-		auto& Params = GB.AllocateParameters();
-		Params.Reads = { { RDGScene, ERHIResourceState::UnorderedAccess } };
-		Params.Writes = { { RDGIndirect, ERHIResourceState::UnorderedAccess } };
-		GB.AddComputePass("ForwardCull", Params,
-			[&S, Slot, CullParams, NumInstances = CullParams.InstanceCount](FRHICommandList& Cmd) mutable
-			{
-				Cmd.BindComputePipeline(S.CullPipeline);
-				FRHIDescriptorSet* Sets[] = { S.CullDescSet[Slot] };
-				Cmd.BindDescriptorSets(0, Sets, 1);
-				Cmd.PushConstants(ERHIShaderStage::Compute, 0, sizeof(CullParams), &CullParams);
-				std::uint32_t Groups = (NumInstances + 63) / 64;
-				Cmd.Dispatch(Groups, 1, 1);
-			});
-	}
-
-	// ── Raster pass: indirect draw ──
+	// ── Raster pass: conventional draw ──
 	{
 		auto& Params = GB.AllocateParameters();
 		Params.Reads = {
-			{ RDGIndirect, ERHIResourceState::IndirectArgument },
-			{ RDGScene, ERHIResourceState::UnorderedAccess },
 			{ RDGFrameUBO, ERHIResourceState::UniformBuffer },
 		};
 		Params.Writes = { { RDGViewport, ERHIResourceState::RenderTarget } };
@@ -723,23 +534,23 @@ void FForwardRendererFeature::ExecuteBasePass(const FForwardDrawContext& Context
 		RT.View = S.ViewportTexView;
 		RT.LoadOp = ERHILoadOp::Clear;
 		RT.StoreOp = ERHIStoreOp::Store;
-		RT.ClearColor[0] = 0.1f;
-		RT.ClearColor[1] = 0.12f;
-		RT.ClearColor[2] = 0.16f;
+		RT.ClearColor[0] = 0.0f;   // TEMP diagnostic: bright green — composite works if visible
+		RT.ClearColor[1] = 1.0f;
+		RT.ClearColor[2] = 0.0f;
 		RT.ClearColor[3] = 1.0f;
 		Params.RenderTargets = { RT };
 
 		GB.AddRasterPass("ForwardDraw", Params,
-			[&S, Slot, MaxDraws = GPUSceneMaxDraws](FRHICommandList& Cmd) mutable
+			[&S, Slot](FRHICommandList& Cmd) mutable
 			{
+				DebugLog("ForwardRenderer: draw lambda executing");
 				Cmd.BindGraphicsPipeline(S.DrawPipeline);
 				FRHIDescriptorSet* Sets[] = { S.FrameDescSet[Slot], S.DrawDescSet[Slot] };
 				Cmd.BindDescriptorSets(0, Sets, 2);
-				Cmd.BindVertexBuffer(0, S.CubeVBO);
-				Cmd.BindIndexBuffer(S.CubeIBO, 0, true);
-				Cmd.SetViewport(0.0f, 0.0f, static_cast<float>(S.VpWidth), static_cast<float>(S.VpHeight));
-				Cmd.SetScissor(0, 0, S.VpWidth, S.VpHeight);
-				Cmd.DrawIndexedIndirect(S.IndirectArgsBuf[Slot], 0, MaxDraws, sizeof(FDrawIndexedIndirectArgs));
+			Cmd.BindVertexBuffer(0, S.CubeVBO);
+			Cmd.SetViewport(0.0f, 0.0f, static_cast<float>(S.VpWidth), static_cast<float>(S.VpHeight));
+			Cmd.SetScissor(0, 0, S.VpWidth, S.VpHeight);
+			Cmd.Draw(3, 1, 0, 0);
 			});
 	}
 }
