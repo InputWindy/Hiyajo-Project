@@ -61,7 +61,8 @@ void main()
 		float d = dot(plane.xyz, center) + plane.w;
 		if (d < -Radius)
 		{
-			visible = false;
+			// TEMP: culling disabled for debug.
+			// visible = false;
 			break;
 		}
 	}
