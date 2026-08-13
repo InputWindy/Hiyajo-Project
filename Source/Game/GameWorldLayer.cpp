@@ -6,7 +6,6 @@
 
 #include "Game/Systems/MovementSystem.h"
 #include "Game/Systems/CameraSystem.h"
-#include "Game/Systems/SceneGatherSystem.h"
 #include "Game/Components/AllComponents.h"
 
 #include <glm/glm.hpp>
@@ -22,7 +21,6 @@ void GameWorldLayer::RegisterSystems(Maho::FSystemGroup& SimGroup)
 {
 	SimGroup.AddSystem<FMovementSystem>();
 	SimGroup.AddSystem<FCameraSystem>();
-	SimGroup.AddSystem<FSceneGatherSystem>();
 }
 
 void GameWorldLayer::SpawnInitialEntities(Maho::FWorld& World)

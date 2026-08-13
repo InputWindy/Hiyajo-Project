@@ -5,10 +5,18 @@
 #include <Core/Engine.h>
 #include <Core/System/Log.h>
 #include <Core/System/Utf8Path.h>
+#include <Core/Extension/World/ECS/World.h>
+#include <Core/Extension/World/ECS/Query.h>
+#include <Core/Extension/World/Components/TransformComponent.h>
 #include <Render/RDG/RDGBuilder.h>
 #include <Render/RenderServer.h>
 #include <Render/SceneUpdatePacket.h>
 #include <Render/ShaderCompiler.h>
+
+#include "Game/Components/AllComponents.h"
+
+#include <glm/glm.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 #include <array>
 #include <cmath>
@@ -118,8 +126,50 @@ static void ExtractFrustumPlanes(const float ViewProj[16], float OutPlanes[6][4]
 
 } // namespace
 
+void FForwardDrawContext::Gather(FWorld& World)
+{
+	Draws.clear();
+
+	// Draw items: every entity with a transform, excluding the camera.
+	{
+		auto Query = World.Query<FTransformComponent>().Not<FCameraComponent>();
+		Query.ForEach([this](FEntityHandle /*Handle*/, FTransformComponent& Transform)
+		{
+			Transform.ComputeLocalToWorld();
+			FSceneDrawItem Item;
+			Item.Type = EScenePrimitiveType::ColoredTriangle;
+			std::memcpy(Item.LocalToWorld, glm::value_ptr(Transform.LocalToWorld), sizeof(Item.LocalToWorld));
+			Draws.push_back(Item);
+		});
+	}
+
+	// Camera: main camera entity.
+	{
+		auto Query = World.Query<FTransformComponent, FCameraComponent>();
+		Query.ForEach([this](FEntityHandle /*Handle*/, FTransformComponent& CamTrans, const FCameraComponent& Cam)
+		{
+			if (!Cam.bMainCamera)
+			{
+				return;
+			}
+
+			CamTrans.ComputeLocalToWorld();
+
+			Camera.FOV = Cam.FOV;
+			Camera.NearPlane = Cam.NearPlane;
+			Camera.FarPlane = Cam.FarPlane;
+			Camera.AspectRatio = Cam.AspectRatio;
+			Camera.bOrthographic = Cam.bOrthographic;
+			Camera.OrthoSize = Cam.OrthoSize;
+
+			const glm::mat4 View = glm::inverse(CamTrans.LocalToWorld);
+			std::memcpy(Camera.View, glm::value_ptr(View), sizeof(Camera.View));
+		});
+	}
+}
+
 FForwardRendererFeature::FForwardRendererFeature()
-	: TRenderFeatureBase("ForwardRenderer")
+	: TRenderFeatureWithContext("ForwardRenderer")
 	, Ptr(std::make_unique<FImpl>())
 {
 }
@@ -537,19 +587,19 @@ void FForwardRendererFeature::ComputeFrustumPlanes(const FCameraFrameData& Camer
 	ExtractFrustumPlanes(ViewProj, OutParams.FrustumPlanes);
 }
 
-void FForwardRendererFeature::ExecuteStage(ERenderPipelineStage Stage, FRDGBuilder& GB)
+void FForwardRendererFeature::ExecuteStage(ERenderPipelineStage Stage, const FForwardDrawContext& Context, FRDGBuilder& GB)
 {
 	if (!Ptr->bInitialized) return;
 
 	switch (Stage)
 	{
-	case ERenderPipelineStage::BeginFrame: DebugLog("ForwardRenderer: stage BeginFrame"); ExecuteBeginFrame(GB); break;
-	case ERenderPipelineStage::BasePass:   DebugLog("ForwardRenderer: stage BasePass");   ExecuteBasePass(GB);   break;
+	case ERenderPipelineStage::BeginFrame: DebugLog("ForwardRenderer: stage BeginFrame"); ExecuteBeginFrame(Context, GB); break;
+	case ERenderPipelineStage::BasePass:   DebugLog("ForwardRenderer: stage BasePass");   ExecuteBasePass(Context, GB);   break;
 	default: break;
 	}
 }
 
-void FForwardRendererFeature::ExecuteBeginFrame(FRDGBuilder& GB)
+void FForwardRendererFeature::ExecuteBeginFrame(const FForwardDrawContext& Context, FRDGBuilder& GB)
 {
 	auto& S = *Ptr;
 	if (!S.RenderServer) return;
@@ -557,7 +607,7 @@ void FForwardRendererFeature::ExecuteBeginFrame(FRDGBuilder& GB)
 
 	const std::uint32_t Slot = static_cast<std::uint32_t>(S.RenderServer->GetCurrentFrameIndex() % FrameRingSize);
 
-	const FSceneUpdatePacket& Scene = S.RenderServer->GetCurrentScene();
+	const auto& Scene = Context;
 	if (Scene.Draws.empty()) return;
 
 	const std::uint32_t NumInstances = static_cast<std::uint32_t>(Scene.Draws.size());
@@ -615,7 +665,7 @@ void FForwardRendererFeature::ExecuteBeginFrame(FRDGBuilder& GB)
 	GB.UploadBuffer(RDGFrameUBO, &FrameUni, sizeof(FrameUni));
 }
 
-void FForwardRendererFeature::ExecuteBasePass(FRDGBuilder& GB)
+void FForwardRendererFeature::ExecuteBasePass(const FForwardDrawContext& Context, FRDGBuilder& GB)
 {
 	auto& S = *Ptr;
 	if (!S.RenderServer) return;
@@ -623,7 +673,7 @@ void FForwardRendererFeature::ExecuteBasePass(FRDGBuilder& GB)
 
 	const std::uint32_t Slot = static_cast<std::uint32_t>(S.RenderServer->GetCurrentFrameIndex() % FrameRingSize);
 
-	const FSceneUpdatePacket& Scene = S.RenderServer->GetCurrentScene();
+	const auto& Scene = Context;
 	if (Scene.Draws.empty())
 	{
 		DebugLog("ForwardRenderer: BasePass — scene has NO draws");

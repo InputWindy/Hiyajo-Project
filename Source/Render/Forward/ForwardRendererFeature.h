@@ -2,6 +2,7 @@
 
 #include <Render/Sequencer/RenderFeature.h>
 #include <Render/RenderPipelineStage.h>
+#include <Render/SceneUpdatePacket.h>
 #include <Render/UI/ImGuiSystem.h>
 #include <Render/ShaderCompiler.h>
 
@@ -17,6 +18,7 @@ namespace Maho
 
 class FRenderServer;
 class IRHI;
+class FWorld;
 class FShaderDatabase;
 struct FShaderPassCompiled;
 
@@ -32,16 +34,27 @@ class FRHIDescriptorPool;
 class FRHIDescriptorSet;
 
 /**
+ * Per-frame game context for the forward renderer.
+ * Gathered on the game thread from the ECS world.
+ */
+struct FForwardDrawContext : IGameContextSlice
+{
+	std::vector<FSceneDrawItem> Draws;
+	FCameraFrameData Camera;
+
+	void Gather(FWorld& World);
+};
+
+/**
  * GPU-driven forward renderer.
  *
  * Frame flow (BasePass stage):
  *   1. Upload scene instances to a storage buffer (CPU → GPU).
  *   2. Fill the indirect args buffer with empty (InstanceCount=0) commands.
- *   3. Compute pass: frustum-cull instances, write visible draw commands.
- *   4. Raster pass: vkCmdDrawIndexedIndirect draws visible instances.
+ *   3. Compute pass: frustum-cull instances, write visible draw commands pass: vkCmdDrawIndexedIndirect draws visible instances.
  *   5. Vertex shader reads per-instance LocalToWorld / Color from the scene SSBO.
  */
-class FForwardRendererFeature final : public TRenderFeatureBase<FForwardRendererFeature>,
+class FForwardRendererFeature final : public TRenderFeatureWithContext<FForwardRendererFeature, FForwardDrawContext>,
 	public TFeatureDependsPack<
 			TFeatureDependsOn<ERenderPipelineStage::BeginFrame>,
 			TFeatureDependsOn<ERenderPipelineStage::BasePass>
@@ -53,7 +66,7 @@ public:
 
 	bool OnRegister(FRenderServer& RenderServer) override;
 	void OnUnregister(FRenderServer& RenderServer) override;
-	void ExecuteStage(ERenderPipelineStage Stage, FRDGBuilder& GB) override;
+	void ExecuteStage(ERenderPipelineStage Stage, const FForwardDrawContext& Context, FRDGBuilder& GB);
 
 	/** Mark shader dirty so next frame recompiles (hot-reload from editor). */
 	void MarkShaderDirty() { Ptr->bShaderReady = false; }
@@ -102,8 +115,8 @@ private:
 	bool EnsureShaderReady();
 	void DestroyShaderResources();
 	void BuildCubeGeometry();
-	void ExecuteBeginFrame(FRDGBuilder& GB);
-	void ExecuteBasePass(FRDGBuilder& GB);
+	void ExecuteBeginFrame(const FForwardDrawContext& Context, FRDGBuilder& GB);
+	void ExecuteBasePass(const FForwardDrawContext& Context, FRDGBuilder& GB);
 	void ComputeFrustumPlanes(const struct FCameraFrameData& Camera, float Aspect, FGPUCullParams& OutParams);
 };
 
