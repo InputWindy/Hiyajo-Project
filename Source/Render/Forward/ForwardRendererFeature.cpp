@@ -642,7 +642,7 @@ void FForwardRendererFeature::ExecuteBasePass(FRDGBuilder& GB)
 	FRDGBuffer* RDGScene = GB.RegisterExternalBuffer(S.SceneInstanceBuf, ERHIResourceState::Common, "GPUSceneInstances");
 	FRDGBuffer* RDGIndirect = GB.RegisterExternalBuffer(S.IndirectArgsBuf, ERHIResourceState::Common, "IndirectArgs");
 	FRDGBuffer* RDGFrameUBO = GB.RegisterExternalBuffer(S.FrameUniformBuf, ERHIResourceState::Common, "FrameUBO");
-	FRDGTexture* RDGViewport = GB.RegisterExternalTexture(S.ViewportTex, ERHIResourceState::Common, "ViewportTex");
+	FRDGTexture* RDGViewport = GB.RegisterExternalTexture(S.ViewportTex, ERHIResourceState::ShaderResource, "ViewportTex");
 
 	// ── Compute pass: culling → indirect args ──
 	{
