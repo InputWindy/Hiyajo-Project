@@ -280,4 +280,13 @@ struct FScriptComponent
 
 static_assert(std::is_trivially_copyable_v<FScriptComponent>, "FScriptComponent must be trivially copyable");
 
+// ═══════════════════════════════════════════
+// Tag components (zero-size markers)
+// ═══════════════════════════════════════════
+
+/** Marks the engine-owned main camera entity (hidden from level outliner). */
+struct FMainCameraTag
+{
+};
+
 } // namespace Maho

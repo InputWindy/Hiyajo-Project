@@ -1753,18 +1753,11 @@ void FEditorLayer::DrawSceneOutliner()
 	FEntityManager& Mgr = ECSWorld.GetEntityManager();
 
 	// ── Delete key handling ──
-	if (SelectedEntity.IsValid() && ImGui::IsKeyPressed(ImGuiKey_Delete) && ImGui::IsWindowFocused())
-	{
-		if (ECSWorld.IsPersistentEntity(SelectedEntity))
-		{
-			ECSWorld.DestroyPersistentEntity(SelectedEntity);
-		}
-		else
+		if (SelectedEntity.IsValid() && ImGui::IsKeyPressed(ImGuiKey_Delete) && ImGui::IsWindowFocused())
 		{
 			Mgr.DestroyEntity(SelectedEntity);
+			SelectedEntity = FEntityHandle{};
 		}
-		SelectedEntity = FEntityHandle{};
-	}
 
 	// ── World root tree node ──
 	ImGuiTreeNodeFlags RootFlags = ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_Framed;
@@ -1807,7 +1800,7 @@ void FEditorLayer::DrawSceneOutliner()
 		{
 			Mgr.ForEachEntity([&](FEntityHandle Handle)
 			{
-				if (ECSWorld.IsPersistentEntity(Handle)) return;
+				if (Mgr.HasTag<Maho::FMainCameraTag>(Handle)) return;
 
 				char Label[128];
 				std::snprintf(Label, sizeof(Label), "Entity %u (Gen %u)##Level%u",
@@ -1865,7 +1858,7 @@ void FEditorLayer::DrawInspectorPanel()
 	}
 
 	ComponentMaskType Mask = Mgr.GetComponentMask(SelectedEntity);
-	bool bIsPersistent = ECSWorld.IsPersistentEntity(SelectedEntity);
+	bool bIsPersistent = Mgr.HasTag<Maho::FMainCameraTag>(SelectedEntity);
 
 	char Header[128];
 	std::snprintf(Header, sizeof(Header), "%sEntity %u  (Gen %u)",
