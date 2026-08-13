@@ -24,9 +24,9 @@ void FSceneGatherSystem::OnPreRender(Maho::FWorld& World)
 
 	Maho::FSceneUpdatePacket Packet;
 
-	// Draw items: every entity with a transform.
+	// Draw items: every entity with a transform, excluding the camera.
 	{
-		auto Query = World.Query<Maho::FTransformComponent>();
+		auto Query = World.Query<Maho::FTransformComponent>().Not<Maho::FCameraComponent>();
 		Query.ForEach([&Packet](Maho::FEntityHandle /*Handle*/, Maho::FTransformComponent& Transform)
 		{
 			Transform.ComputeLocalToWorld();

@@ -27,7 +27,7 @@ void GameWorldLayer::RegisterSystems(Maho::FSystemGroup& SimGroup)
 
 void GameWorldLayer::SpawnInitialEntities(Maho::FWorld& World)
 {
-	// Spawn demo entity with a TransformComponent.
+	// Unit cube at world origin (ForwardRenderer draws a cube per instance).
 	{
 		Maho::FEntityHandle Handle = World.CreateEntity();
 		Maho::FTransformComponent Transform;
@@ -35,14 +35,20 @@ void GameWorldLayer::SpawnInitialEntities(Maho::FWorld& World)
 		World.SetComponent<Maho::FTransformComponent>(Handle, Transform);
 	}
 
-	// Main camera entity (engine-owned, tagged for editor hiding).
+	// Main camera: above + in front of the cube, tilted 45° down looking at origin.
 	{
 		Maho::FEntityHandle CamHandle = World.CreateEntity();
 		World.AddTag<Maho::FMainCameraTag>(CamHandle);
 
+		const glm::vec3 CamPos(0.0f, 5.0f, 5.0f);
+		const glm::vec3 Target(0.0f, 0.0f, 0.0f);
+
 		Maho::FTransformComponent CamTransform;
 		CamTransform.SetIdentity();
-		CamTransform.Position = glm::vec3(0.0f, 0.0f, -5.0f);
+		CamTransform.Position = CamPos;
+		CamTransform.Rotation = glm::quatLookAt(
+			glm::normalize(Target - CamPos),
+			glm::vec3(0.0f, 1.0f, 0.0f));
 		World.SetComponent<Maho::FTransformComponent>(CamHandle, CamTransform);
 
 		Maho::FCameraComponent CamComp;
