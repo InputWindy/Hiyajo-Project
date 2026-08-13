@@ -31,7 +31,8 @@ layout(location = 0) out vec3 vColor;
 
 void main()
 {
-	uint i = gl_InstanceIndex + gl_BaseInstance;
+	// gl_InstanceIndex already includes firstInstance from the draw command.
+	uint i = gl_InstanceIndex;
 	Instance inst = Instances[i];
 	vec4 worldPos = inst.LocalToWorld * vec4(inPosition, 1.0);
 	gl_Position = u_Frame.ViewProj * worldPos;

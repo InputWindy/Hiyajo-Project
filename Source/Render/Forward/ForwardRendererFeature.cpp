@@ -4,6 +4,7 @@
 #include <Core/Application/App.h>
 #include <Core/Engine.h>
 #include <Core/System/Log.h>
+#include <Core/System/Utf8Path.h>
 #include <Render/RDG/RDGBuilder.h>
 #include <Render/RenderServer.h>
 #include <Render/SceneUpdatePacket.h>
@@ -21,6 +22,17 @@ namespace Maho
 
 namespace
 {
+
+/** Direct diagnostic log — bypasses spdlog so it always lands on disk. */
+static void DebugLog(const char* Msg)
+{
+	static std::ofstream Out("C:/Users/luchunyi01/Desktop/forward_debug.log", std::ios::app);
+	if (Out.is_open())
+	{
+		Out << Msg << std::endl;
+		Out.flush();
+	}
+}
 
 /** 24 cube vertices (pos + color), 36 indices. */
 static const FGPUCubeVertex CubeVertices[] =
@@ -69,7 +81,7 @@ static const std::uint32_t CubeIndices[] =
 
 static std::string LoadTextFile(const std::string& Path)
 {
-	std::ifstream In(Path, std::ios::binary);
+	std::ifstream In(Maho::PathFromUtf8(Path), std::ios::binary);
 	if (!In) return {};
 	std::ostringstream Ss;
 	Ss << In.rdbuf();
@@ -116,11 +128,14 @@ FForwardRendererFeature::~FForwardRendererFeature() = default;
 
 bool FForwardRendererFeature::OnRegister(FRenderServer& RenderServer)
 {
+	DebugLog("ForwardRenderer: OnRegister");
 	if (!SetupPersistentResources(RenderServer))
 	{
+		DebugLog("ForwardRenderer: persistent resource setup FAILED");
 		MAHO_CORE_ERROR("ForwardRenderer: persistent resource setup failed");
 		return false;
 	}
+	DebugLog("ForwardRenderer: persistent resources OK");
 	MAHO_CORE_INFO("ForwardRenderer: registered (shader lazy)");
 	return true;
 }
@@ -272,7 +287,12 @@ bool FForwardRendererFeature::EnsureShaderReady()
 {
 	auto& S = *Ptr;
 	if (S.bShaderReady) return true;
-	if (!S.RHI || !GApp) return false;
+	if (!S.RHI || !GApp)
+	{
+		DebugLog("ForwardRenderer: EnsureShaderReady early-out (no RHI/GApp)");
+		return false;
+	}
+	DebugLog("ForwardRenderer: EnsureShaderReady compiling shaders...");
 
 	if (!FShaderCompiler::Initialize())
 	{
@@ -288,18 +308,22 @@ bool FForwardRendererFeature::EnsureShaderReady()
 	const std::string CullSrc = LoadTextFile(Config.ProjectShadersDir + "/Forward/ForwardCulling.comp");
 	if (CullSrc.empty())
 	{
+		DebugLog((std::string("ForwardRenderer: cull shader NOT FOUND at ") + Config.ProjectShadersDir + "/Forward/ForwardCulling.comp").c_str());
 		MAHO_CORE_ERROR("ForwardRenderer: missing Forward/ForwardCulling.comp");
 		return false;
 	}
+	DebugLog("ForwardRenderer: cull shader source loaded");
 
 	FShaderCompileDesc CullDesc;
 	CullDesc.Source = CullSrc;
 	FShaderCompileResult CullResult = FShaderCompiler::CompileStage(CullDesc, ERHIShaderStage::Compute, "main");
 	if (!CullResult.bSuccess)
 	{
+		DebugLog((std::string("ForwardRenderer: cull compile FAILED: ") + CullResult.ErrorLog).c_str());
 		MAHO_CORE_ERROR("ForwardRenderer: cull shader compile failed: {}", CullResult.ErrorLog);
 		return false;
 	}
+	DebugLog("ForwardRenderer: cull compile OK");
 
 	// ── Compile vertex shader ──
 	const std::string VertSrc = LoadTextFile(Config.ProjectShadersDir + "/Forward/Forward.vert");
@@ -313,9 +337,11 @@ bool FForwardRendererFeature::EnsureShaderReady()
 	FShaderCompileResult VertResult = FShaderCompiler::CompileStage(VertDesc, ERHIShaderStage::Vertex, "main");
 	if (!VertResult.bSuccess)
 	{
+		DebugLog((std::string("ForwardRenderer: vert compile FAILED: ") + VertResult.ErrorLog).c_str());
 		MAHO_CORE_ERROR("ForwardRenderer: vert shader compile failed: {}", VertResult.ErrorLog);
 		return false;
 	}
+	DebugLog("ForwardRenderer: vert compile OK");
 
 	// ── Compile fragment shader ──
 	const std::string FragSrc = LoadTextFile(Config.ProjectShadersDir + "/Forward/Forward.frag");
@@ -329,9 +355,11 @@ bool FForwardRendererFeature::EnsureShaderReady()
 	FShaderCompileResult FragResult = FShaderCompiler::CompileStage(FragDesc, ERHIShaderStage::Fragment, "main");
 	if (!FragResult.bSuccess)
 	{
+		DebugLog((std::string("ForwardRenderer: frag compile FAILED: ") + FragResult.ErrorLog).c_str());
 		MAHO_CORE_ERROR("ForwardRenderer: frag shader compile failed: {}", FragResult.ErrorLog);
 		return false;
 	}
+	DebugLog("ForwardRenderer: frag compile OK");
 
 	IRHI* RHI = S.RHI;
 
@@ -471,6 +499,7 @@ bool FForwardRendererFeature::EnsureShaderReady()
 	}
 
 	S.bShaderReady = true;
+	DebugLog("ForwardRenderer: shaders + pipelines READY");
 	MAHO_CORE_INFO("ForwardRenderer: shaders compiled + pipelines ready");
 	return true;
 }
@@ -520,8 +549,8 @@ void FForwardRendererFeature::ExecuteStage(ERenderPipelineStage Stage, FRDGBuild
 
 	switch (Stage)
 	{
-	case ERenderPipelineStage::BeginFrame: ExecuteBeginFrame(GB); break;
-	case ERenderPipelineStage::BasePass:   ExecuteBasePass(GB);   break;
+	case ERenderPipelineStage::BeginFrame: DebugLog("ForwardRenderer: stage BeginFrame"); ExecuteBeginFrame(GB); break;
+	case ERenderPipelineStage::BasePass:   DebugLog("ForwardRenderer: stage BasePass");   ExecuteBasePass(GB);   break;
 	default: break;
 	}
 }
@@ -537,6 +566,8 @@ void FForwardRendererFeature::ExecuteBeginFrame(FRDGBuilder& GB)
 
 	const std::uint32_t NumInstances = static_cast<std::uint32_t>(Scene.Draws.size());
 	if (NumInstances > GPUSceneMaxInstances) return;
+	DebugLog((std::string("ForwardRenderer: BeginFrame uploading ") + std::to_string(NumInstances) + " instances").c_str());
+	MAHO_CORE_INFO("ForwardRenderer: BeginFrame uploading {} instances", NumInstances);
 
 	// ── Build GPU scene instances ──
 	std::vector<FGPUSceneInstance> Instances(NumInstances);
@@ -595,7 +626,12 @@ void FForwardRendererFeature::ExecuteBasePass(FRDGBuilder& GB)
 	if (!EnsureShaderReady()) return;
 
 	const FSceneUpdatePacket& Scene = S.RenderServer->GetCurrentScene();
-	if (Scene.Draws.empty()) return;
+	if (Scene.Draws.empty())
+	{
+		DebugLog("ForwardRenderer: BasePass — scene has NO draws");
+		return;
+	}
+	DebugLog((std::string("ForwardRenderer: BasePass culling ") + std::to_string(Scene.Draws.size()) + " instances").c_str());
 
 	// ── Cull params (push constants) ──
 	FGPUCullParams CullParams{};
