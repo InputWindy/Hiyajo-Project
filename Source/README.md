@@ -65,7 +65,6 @@ Hiyajo-Project/
 │   │   │   ├── EditorUIRegistry.h/cpp#  Panel registration
 │   │   │   └── AgentChatClient.h/cpp#   AI agent chat panel
 │   │   ├── Script/
-│   │   │   └── ScriptLayer.h/cpp    #   Lua script execution layer
 │   │   └── Components/
 │   │       └── AllComponents.h      #   ECS component master include
 │   └── Render/                      # Custom render pipeline
@@ -142,7 +141,6 @@ virtual bool PreInitialize() override
     RegisterExtension<Maho::FGCSystem>(EExtensionPriority::System);       // ← Scanned
     RegisterExtension<Maho::FResourceSystem>(EExtensionPriority::System); // ← Scanned
     RegisterExtension<FWorldLayer>(EExtensionPriority::Layer);            // ← Scanned
-    RegisterExtension<Maho::FScriptLayer>(EExtensionPriority::Overlay);
     RegisterExtension<Maho::FScriptSystem>(EExtensionPriority::Overlay);
     RegisterExtension<Maho::FEditorLayer>(EExtensionPriority::Overlay);
     return true;

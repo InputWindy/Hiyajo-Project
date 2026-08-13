@@ -41,7 +41,8 @@ public:
  *
  * Extra bindings: implement ILuaBindable::BindLua and either
  *   Script.Bind(Obj) or subscribe to GetOnLuaReady() for auto-bind.
- * Per-frame OnUpdate calls stay on FScriptLayer.
+ * Global bootstrap script Scripts/main.lua is loaded on Attach;
+ * its optional OnUpdate / OnFixedUpdate globals are driven each frame.
  */
 class FScriptSystem final
 	: public IEngineExtension

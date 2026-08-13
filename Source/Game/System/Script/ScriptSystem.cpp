@@ -113,6 +113,33 @@ bool FScriptSystem::ExecuteStage(EEngineStage Stage)
 		}
 		return true;
 	}
+	case EEngineStage::Attach:
+	{
+		// Global bootstrap script: Scripts/main.lua defines optional OnUpdate / OnFixedUpdate globals.
+		namespace fs = std::filesystem;
+		const fs::path MainScript = fs::path(ScriptsDirectory) / "main.lua";
+		if (fs::is_regular_file(MainScript))
+		{
+			(void)DoFile("main.lua");
+		}
+		else
+		{
+			MAHO_CORE_INFO("FScriptSystem: no '{}' (skip)", MainScript.string());
+		}
+		return true;
+	}
+	case EEngineStage::Update:
+		if (GApp)
+		{
+			(void)Call("OnUpdate", GApp->GetDeltaSeconds());
+		}
+		return true;
+	case EEngineStage::FixedUpdate:
+		if (GApp)
+		{
+			(void)Call("OnFixedUpdate", GApp->GetFixedDeltaSeconds());
+		}
+		return true;
 	case EEngineStage::Shutdown:
 		ShutdownLua();
 		return true;
