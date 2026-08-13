@@ -68,12 +68,12 @@ Hiyajo-Project/
 │   │   └── Components/
 │   │       └── AllComponents.h      #   ECS component master include
 │   └── Render/                      # Custom render pipeline
-│       ├── TriangleBasePassFeature.h/cpp #  Hello-triangle RDG pass
+│       ├── Forward/                 #   GPU-driven forward renderer
 │       ├── MahoCommonUniforms.h      #   Frame/Object uniform structs (std140)
 │       ├── RenderResourceExporters.cpp   #  TRenderResourceExporter<T> specializations
 │       └── ResourceSnapshotConverters.h/cpp # CPU resource → snapshot conversion
 ├── Shaders/                         # Project-specific shaders
-│   └── Triangle.shader              #   Properties{} · SubShader{} · Pass{}
+│   └── Forward/                     #   Forward renderer shaders (comp/vert/frag)
 ├── Intermediate/
 │   └── Generated/                   # Codegen output (gitignored)
 │       ├── Hiyajo-ProjectApp.cpp    #   Auto-registered extensions + features
@@ -108,11 +108,8 @@ Hiyajo-Project/
 ### 3. Shader Compilation
 
 ```
-Triangle.shader (GLSL + Unity-style extensions)
-  │  Properties{} · SubShader{} · Pass{}
-  ▼
-ShaderParser
-  │  Strip a2v/v2f structs · Parse semantics · Inject GLSL declarations
+Forward/ForwardCulling.comp + Forward.vert + Forward.frag (raw GLSL)
+  │  CompileStage → glslang → SPIR-V
   ▼
 ShaderCompiler (glslang)
   │  GLSL → SPIR-V + reflection JSON
@@ -147,7 +144,7 @@ virtual bool PreInitialize() override
 virtual bool PostInitialize() override
 {
     auto& Server = GetExtension<Maho::FRenderSystem>()->GetRenderServer();
-    Server.RegisterFeature<Maho::FTriangleBasePassFeature>(); // ← Scanned
+    Server.RegisterFeature<Maho::FForwardRendererFeature>();
     return true;
 }
 ```
