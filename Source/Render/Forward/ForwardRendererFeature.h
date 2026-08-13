@@ -43,6 +43,7 @@ class FRHIDescriptorSet;
  */
 class FForwardRendererFeature final : public TRenderFeatureBase<FForwardRendererFeature>,
 	public TFeatureDependsPack<
+			TFeatureDependsOn<ERenderPipelineStage::BeginFrame>,
 			TFeatureDependsOn<ERenderPipelineStage::BasePass>
 	>
 {
@@ -103,6 +104,8 @@ private:
 	bool EnsureShaderReady();
 	void DestroyShaderResources();
 	void BuildCubeGeometry();
+	void ExecuteBeginFrame(FRDGBuilder& GB);
+	void ExecuteBasePass(FRDGBuilder& GB);
 	void ComputeFrustumPlanes(const struct FCameraFrameData& Camera, float Aspect, FGPUCullParams& OutParams);
 };
 

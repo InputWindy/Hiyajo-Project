@@ -516,10 +516,20 @@ void FForwardRendererFeature::ComputeFrustumPlanes(const FCameraFrameData& Camer
 
 void FForwardRendererFeature::ExecuteStage(ERenderPipelineStage Stage, FRDGBuilder& GB)
 {
-	auto& S = *Ptr;
-	if (!S.bInitialized || !S.RenderServer) return;
-	if (Stage != ERenderPipelineStage::BasePass) return;
+	if (!Ptr->bInitialized) return;
 
+	switch (Stage)
+	{
+	case ERenderPipelineStage::BeginFrame: ExecuteBeginFrame(GB); break;
+	case ERenderPipelineStage::BasePass:   ExecuteBasePass(GB);   break;
+	default: break;
+	}
+}
+
+void FForwardRendererFeature::ExecuteBeginFrame(FRDGBuilder& GB)
+{
+	auto& S = *Ptr;
+	if (!S.RenderServer) return;
 	if (!EnsureShaderReady()) return;
 
 	const FSceneUpdatePacket& Scene = S.RenderServer->GetCurrentScene();
@@ -528,8 +538,7 @@ void FForwardRendererFeature::ExecuteStage(ERenderPipelineStage Stage, FRDGBuild
 	const std::uint32_t NumInstances = static_cast<std::uint32_t>(Scene.Draws.size());
 	if (NumInstances > GPUSceneMaxInstances) return;
 
-	// ── Build CPU-side data ──
-
+	// ── Build GPU scene instances ──
 	std::vector<FGPUSceneInstance> Instances(NumInstances);
 	for (std::uint32_t I = 0; I < NumInstances; ++I)
 	{
@@ -541,7 +550,7 @@ void FForwardRendererFeature::ExecuteStage(ERenderPipelineStage Stage, FRDGBuild
 		Instances[I].Color[3] = 1.0f;
 	}
 
-	// Empty indirect commands (InstanceCount=0) — prefill so invisible draws are no-ops.
+	// ── Empty indirect commands (InstanceCount=0) — invisible draws are no-ops ──
 	std::vector<FDrawIndexedIndirectArgs> Empty(GPUSceneMaxDraws);
 	for (auto& E : Empty)
 	{
@@ -552,6 +561,7 @@ void FForwardRendererFeature::ExecuteStage(ERenderPipelineStage Stage, FRDGBuild
 		E.FirstInstance = 0;
 	}
 
+	// ── Frame uniforms ──
 	FFrameUniforms FrameUni{};
 	std::memcpy(FrameUni.View, Scene.Camera.View, sizeof(FrameUni.View));
 	{
@@ -569,9 +579,28 @@ void FForwardRendererFeature::ExecuteStage(ERenderPipelineStage Stage, FRDGBuild
 			}
 	}
 
+	// ── Declarative uploads (staging + copy passes, barriers auto-derived) ──
+	FRDGBuffer* RDGScene = GB.RegisterExternalBuffer(S.SceneInstanceBuf, ERHIResourceState::Common, "GPUSceneInstances");
+	FRDGBuffer* RDGIndirect = GB.RegisterExternalBuffer(S.IndirectArgsBuf, ERHIResourceState::Common, "IndirectArgs");
+	FRDGBuffer* RDGFrameUBO = GB.RegisterExternalBuffer(S.FrameUniformBuf, ERHIResourceState::Common, "FrameUBO");
+	GB.UploadBuffer(RDGScene, Instances.data(), Instances.size() * sizeof(FGPUSceneInstance));
+	GB.UploadBuffer(RDGIndirect, Empty.data(), Empty.size() * sizeof(FDrawIndexedIndirectArgs));
+	GB.UploadBuffer(RDGFrameUBO, &FrameUni, sizeof(FrameUni));
+}
+
+void FForwardRendererFeature::ExecuteBasePass(FRDGBuilder& GB)
+{
+	auto& S = *Ptr;
+	if (!S.RenderServer) return;
+	if (!EnsureShaderReady()) return;
+
+	const FSceneUpdatePacket& Scene = S.RenderServer->GetCurrentScene();
+	if (Scene.Draws.empty()) return;
+
+	// ── Cull params (push constants) ──
 	FGPUCullParams CullParams{};
 	ComputeFrustumPlanes(Scene.Camera, Scene.Camera.AspectRatio, CullParams);
-	CullParams.InstanceCount = NumInstances;
+	CullParams.InstanceCount = static_cast<std::uint32_t>(Scene.Draws.size());
 
 	// ── RDG resources ──
 	FRDGBuffer* RDGScene = GB.RegisterExternalBuffer(S.SceneInstanceBuf, ERHIResourceState::Common, "GPUSceneInstances");
@@ -579,18 +608,13 @@ void FForwardRendererFeature::ExecuteStage(ERenderPipelineStage Stage, FRDGBuild
 	FRDGBuffer* RDGFrameUBO = GB.RegisterExternalBuffer(S.FrameUniformBuf, ERHIResourceState::Common, "FrameUBO");
 	FRDGTexture* RDGViewport = GB.RegisterExternalTexture(S.ViewportTex, ERHIResourceState::Common, "ViewportTex");
 
-	// ── Declarative uploads (staging + copy passes, barriers auto-derived) ──
-	GB.UploadBuffer(RDGScene, Instances.data(), Instances.size() * sizeof(FGPUSceneInstance));
-	GB.UploadBuffer(RDGIndirect, Empty.data(), Empty.size() * sizeof(FDrawIndexedIndirectArgs));
-	GB.UploadBuffer(RDGFrameUBO, &FrameUni, sizeof(FrameUni));
-
 	// ── Compute pass: culling → indirect args ──
 	{
 		auto& Params = GB.AllocateParameters();
 		Params.Reads = { { RDGScene, ERHIResourceState::UnorderedAccess } };
 		Params.Writes = { { RDGIndirect, ERHIResourceState::UnorderedAccess } };
 		GB.AddComputePass("ForwardCull", Params,
-			[&S, CullParams, NumInstances = static_cast<std::uint32_t>(Scene.Draws.size())](FRHICommandList& Cmd) mutable
+			[&S, CullParams, NumInstances = CullParams.InstanceCount](FRHICommandList& Cmd) mutable
 			{
 				Cmd.BindComputePipeline(S.CullPipeline);
 				FRHIDescriptorSet* Sets[] = { S.CullDescSet };
