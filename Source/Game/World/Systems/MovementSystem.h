@@ -1,6 +1,6 @@
 #pragma once
 
-#include <ECS/System.h>
+#include <Core/ECS/System.h>
 #include "Game/World/Components/TransformComponent.h"
 
 /**

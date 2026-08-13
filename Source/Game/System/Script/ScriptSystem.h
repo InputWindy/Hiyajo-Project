@@ -1,11 +1,11 @@
-﻿#pragma once
+#pragma once
 
 #include <Core/Delegate.h>
 #include <Core/DependsPack.h>
 #include <Core/Export.h>
 #include <Core/Sequencer/EngineExtension.h>
 #include <Core/TypeList.h>
-#include <ECS/EntityHandle.h>
+#include <Core/ECS/EntityHandle.h>
 
 #include <memory>
 #include <string>

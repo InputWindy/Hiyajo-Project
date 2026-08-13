@@ -1,11 +1,11 @@
-﻿#pragma once
+#pragma once
 
 #include "Game/Editor/AgentChatClient.h"
 #include "Game/Editor/EditorUIRegistry.h"
 #include "Game/System/Resource/ResourceSystem.h"
-#include <ECS/SystemGroup.h>
-#include <ECS/EntityManager.h>
-#include <ECS/EntityHandle.h>
+#include <Core/ECS/SystemGroup.h>
+#include <Core/ECS/EntityManager.h>
+#include <Core/ECS/EntityHandle.h>
 #include "Game/World/WorldLayer.h"
 #include "Game/Components/AllComponents.h"
 #include "Game/World/Components/TransformComponent.h"

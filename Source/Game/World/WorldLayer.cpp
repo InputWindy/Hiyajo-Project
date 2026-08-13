@@ -8,7 +8,7 @@
 
 #include <Core/Application/App.h>
 #include <Core/System/Log.h>
-#include <ECS/Query.h>
+#include <Core/ECS/Query.h>
 
 #include <glm/glm.hpp>
 
