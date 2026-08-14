@@ -1,7 +1,7 @@
 #include "Editor/EditorUIRegistry.h"
 
-#include <Core/Application/App.h>
-#include <Core/System/Log.h>
+#include <Core/App.h>
+#include <Core/Misc/Log.h>
 
 #include <imgui.h>
 #include <imgui_internal.h>

@@ -15,9 +15,9 @@
 #include "Game/Components/ScriptComponent.h"
 #include "Game/Components/MainCameraTag.h"
 #include "Game/Components/TransformComponent.h"
-#include <Core/Sequencer/EngineExtension.h>
-#include <Core/System/Log.h>
-#include <Core/Sequencer/EngineStage.h>
+#include <Core/Engine/EngineExtension.h>
+#include <Core/Misc/Log.h>
+#include <Core/Engine/EngineStage.h>
 #include <Render/UI/ImGuiSystem.h>
 
 #include <cstdint>

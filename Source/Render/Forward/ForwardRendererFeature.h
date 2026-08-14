@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Render/Sequencer/RenderFeature.h>
+#include <Render/RenderFeature.h>
 #include <Render/RenderPipelineStage.h>
 #include <Render/UI/ImGuiSystem.h>
 #include <Render/Shader/ShaderCompiler.h>

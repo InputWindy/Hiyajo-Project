@@ -9,7 +9,7 @@
 #include <Core/Extension/Resource/ResourceSystem.h>
 #include "Resource/TextureEnums.h"
 #include "Resource/AnimationKey.h"
-#include <Core/Serialization/Archive.h>
+#include <Core/Misc/Archive.h>
 
 #include <cstdint>
 #include <string>

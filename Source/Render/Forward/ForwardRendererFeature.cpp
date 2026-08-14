@@ -1,10 +1,10 @@
 #include "Render/Forward/ForwardRendererFeature.h"
 #include "Render/MahoCommonUniforms.h"
 
-#include <Core/Application/App.h>
-#include <Core/Engine.h>
-#include <Core/System/Log.h>
-#include <Core/System/Utf8Path.h>
+#include <Core/App.h>
+#include <Core/Engine/Engine.h>
+#include <Core/Misc/Log.h>
+#include <Core/Misc/Utf8Path.h>
 #include <Core/Extension/World/ECS/World.h>
 #include <Core/Extension/World/ECS/Query.h>
 #include "Game/Components/TransformComponent.h"

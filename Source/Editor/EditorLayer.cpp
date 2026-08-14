@@ -1,16 +1,16 @@
 #include "Editor/EditorLayer.h"
 
-#include <Core/Application/App.h>
-#include <Core/System/ConfigFile.h>
-#include <Core/System/Console.h>
+#include <Core/App.h>
+#include <Core/Misc/ConfigFile.h>
+#include <Core/Misc/Console.h>
 #include "Editor/AgentChatClient.h"
 #include "Editor/EditorUIRegistry.h"
 #include <Core/Extension/Platform/Platform.h>
 #include <Render/RenderSystem.h>
 #include <Core/Extension/Resource/ResourceSystem.h>
-#include <Core/System/Log.h>
-#include <Core/System/Paths.h>
-#include <Core/System/Utf8Path.h>
+#include <Core/Misc/Log.h>
+#include <Core/Misc/Paths.h>
+#include <Core/Misc/Utf8Path.h>
 #include <Render/UI/ImGuiExtensions.h>
 
 #include <Core/Extension/Resource/ResourceIO.h>

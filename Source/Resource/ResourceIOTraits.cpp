@@ -3,7 +3,7 @@
 #include "TextureImageCodec.h"
 #include "MeshModelCodec.h"
 
-#include <Core/System/Utf8Path.h>
+#include <Core/Misc/Utf8Path.h>
 
 #include <filesystem>
 #include <fstream>

@@ -3,12 +3,12 @@
 #define SOL_ALL_SAFETIES_ON 1
 #include <sol/sol.hpp>
 
-#include <Core/Application/App.h>
+#include <Core/App.h>
 #include <Core/Extension/Script/ScriptSystem.h>
 #include <Core/Extension/World/ECS/EntityHandle.h>
 #include <Core/Extension/World/ECS/Query.h>
 #include <Core/Extension/World/ECS/World.h>
-#include <Core/System/Log.h>
+#include <Core/Misc/Log.h>
 
 #include "Game/Components/ScriptComponent.h"
 #include "Game/Components/TransformComponent.h"

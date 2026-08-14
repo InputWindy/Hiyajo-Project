@@ -1,7 +1,7 @@
 #include "Resource/ResourceCasset.h"
 
-#include <Core/System/Compression.h>
-#include <Core/System/Log.h>
+#include <Core/Misc/Compression.h>
+#include <Core/Misc/Log.h>
 
 #include <algorithm>
 #include <cstring>

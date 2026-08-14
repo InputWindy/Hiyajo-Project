@@ -1,7 +1,7 @@
 #include "Editor/AgentChatClient.h"
 
-#include <Core/Json.h>
-#include <Core/System/Log.h>
+#include <Core/Misc/Json.h>
+#include <Core/Misc/Log.h>
 
 #include <atomic>
 #include <chrono>
