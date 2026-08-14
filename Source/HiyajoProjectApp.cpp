@@ -40,7 +40,7 @@ protected:
 		RegisterExtension<FGameWorldLayer>(EExtensionPriority::Layer);
 
 #if defined(GAME_WITH_EDITOR) && defined(MAHO_WITH_IMGUI)
-		RegisterExtension<Maho::FEditorLayer>(EExtensionPriority::Overlay);
+		// RegisterExtension<Maho::FEditorLayer>(EExtensionPriority::Overlay);
 #endif
 
 		return true;

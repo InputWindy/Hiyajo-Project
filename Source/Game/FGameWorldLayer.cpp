@@ -1,6 +1,8 @@
 #include "Game/FGameWorldLayer.h"
 
+#include <Core/App.h>
 #include <Core/Extension/World/ECS/EntityHandle.h>
+#include <Render/RenderSystem.h>
 
 #include "Game/Components/CameraComponent.h"
 #include "Game/Components/MainCameraTag.h"
@@ -11,11 +13,24 @@
 
 #include <glm/glm.hpp>
 
-#include <utility>
+FGameWorldLayer::FGameWorldLayer() = default;
 
-FGameWorldLayer::FGameWorldLayer(std::string WorldName)
-	: Maho::FWorldLayer(std::move(WorldName))
+bool FGameWorldLayer::ExecuteStage(Maho::EEngineStage Stage)
 {
+	const bool bOk = Maho::FSystemGroup::ExecuteStage(Stage);
+
+	// World → render handoff: gather render feature contexts in PreRender.
+	if (Stage == Maho::EEngineStage::PreRender && bOk)
+	{
+		if (Maho::GApp)
+		{
+			if (auto* RenderSystem = Maho::GApp->GetExtension<Maho::FRenderSystem>())
+			{
+				RenderSystem->SubmitFrameContext(RenderSystem->GatherContexts(GetWorld()));
+			}
+		}
+	}
+	return bOk;
 }
 
 void FGameWorldLayer::RegisterSystems(Maho::FSystemGroup& SimGroup)
@@ -60,4 +75,3 @@ void FGameWorldLayer::SpawnInitialEntities(Maho::FWorld& World)
 		World.SetComponent<Maho::FCameraComponent>(CamHandle, CamComp);
 	}
 }
-

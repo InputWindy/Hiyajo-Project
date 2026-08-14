@@ -1,17 +1,18 @@
 #pragma once
 
-#include <Core/Extension/World/WorldLayer.h>
-
-#include <string>
+#include <Core/Extension/World/ECS/SystemGroup.h>
 
 /**
- * Project world layer: registers game systems and spawns initial entities
- * on top of the engine FWorldLayer lifecycle.
+ * Project world: the root system group + engine extension. Registers game
+ * systems, spawns initial entities, and bridges the world to the render system
+ * on top of the engine FSystemGroup driver.
  */
-class FGameWorldLayer : public Maho::FWorldLayer
+class FGameWorldLayer : public Maho::FInitializationSystemGroup
 {
 public:
-	explicit FGameWorldLayer(std::string WorldName = "MainWorld");
+	FGameWorldLayer();
+
+	bool ExecuteStage(Maho::EEngineStage Stage) override;
 
 protected:
 	void RegisterSystems(Maho::FSystemGroup& SimGroup) override;
