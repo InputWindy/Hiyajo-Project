@@ -6,7 +6,7 @@
 #include "Editor/AgentChatClient.h"
 #include "Editor/EditorUIRegistry.h"
 #include <Core/Extension/Platform/Platform.h>
-#include <Core/Extension/Render/Render.h>
+#include <Render/RenderSystem.h>
 #include <Core/Extension/Resource/ResourceSystem.h>
 #include <Core/System/Log.h>
 #include <Core/System/Paths.h>
