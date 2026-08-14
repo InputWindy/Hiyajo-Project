@@ -10,7 +10,7 @@
 namespace Maho
 {
 
-class FApp;
+class FAppBase;
 class FEditorLayer;
 
 /**
@@ -63,6 +63,6 @@ private:
 	std::unordered_map<std::string, bool> ModalOpen;
 };
 
-[[nodiscard]] FEditorUIRegistry* TryGetEditorUIRegistry(FApp& App);
+[[nodiscard]] FEditorUIRegistry* TryGetEditorUIRegistry(FAppBase& App);
 
 } // namespace Maho

@@ -124,12 +124,7 @@ constexpr const char* kModalBusyTitle = "Busy";
 	case EEngineStage::Init: return "Init";
 	case EEngineStage::PostInit: return "PostInit";
 	case EEngineStage::Attach: return "Attach";
-	case EEngineStage::BeginFrame: return "BeginFrame";
 	case EEngineStage::Tick: return "Tick";
-	case EEngineStage::EndFrame: return "EndFrame";
-	case EEngineStage::PreRender: return "PreRender";
-	case EEngineStage::Render: return "Render";
-	case EEngineStage::PostRender: return "PostRender";
 	case EEngineStage::Detach: return "Detach";
 	case EEngineStage::PrepareExit: return "PrepareExit";
 	case EEngineStage::Shutdown: return "Shutdown";
@@ -541,7 +536,7 @@ void FEditorLayer::UnmountEditor()
 	}
 }
 
-FEditorUIDrawContext FEditorLayer::MakeUIDrawContext(FApp& App)
+FEditorUIDrawContext FEditorLayer::MakeUIDrawContext(FAppBase& App)
 {
 	FEditorUIDrawContext Ctx;
 	Ctx.App = &App;
@@ -1159,7 +1154,7 @@ bool FEditorLayer::ExecuteStage(EEngineStage Stage)
 	{
 		return true;
 	}
-	FApp& App = *GApp;
+	FAppBase& App = *GApp;
 
 	DrainEngineLogs(App);
 
@@ -1225,7 +1220,7 @@ bool FEditorLayer::ExecuteStage(EEngineStage Stage)
 	return true;
 }
 
-void FEditorLayer::DrawMenuItems(FApp& App, float RowH)
+void FEditorLayer::DrawMenuItems(FAppBase& App, float RowH)
 {
 	// Full-row-height menu buttons (BeginMenu in a MenuBar only hits on text height).
 	auto DrawTopLevelMenu = [&](const char* Id, const char* Label, auto&& FillMenu)
@@ -1441,7 +1436,7 @@ void FEditorLayer::EnsureDefaultDockLayout(std::uint32_t DockspaceId)
 	ImGui::DockBuilderFinish(DockspaceId);
 }
 
-void FEditorLayer::DrawDockSpace(FApp& App)
+void FEditorLayer::DrawDockSpace(FAppBase& App)
 {
 	ImGuiViewport* Viewport = ImGui::GetMainViewport();
 	ImGui::SetNextWindowPos(Viewport->WorkPos);
@@ -2151,7 +2146,7 @@ void FEditorLayer::DrawWallpaperPanel()
 	ImGui::End();
 }
 
-void FEditorLayer::ClearWallpaper(FApp& App)
+void FEditorLayer::ClearWallpaper(FAppBase& App)
 {
 	WallpaperSourcePath.clear();
 	bWallpaperDropRectValid = false;
@@ -2219,7 +2214,7 @@ std::string FEditorLayer::ResolveDefaultWallpaperPath()
 	return {};
 }
 
-void FEditorLayer::EnsureDefaultWallpaper(FApp& App)
+void FEditorLayer::EnsureDefaultWallpaper(FAppBase& App)
 {
 	if (bDefaultWallpaperAttempted || WallpaperTexture.IsValid())
 	{
@@ -2237,7 +2232,7 @@ void FEditorLayer::EnsureDefaultWallpaper(FApp& App)
 	TryApplyWallpaperFromPath(App, Path);
 }
 
-bool FEditorLayer::TryApplyWallpaperFromPath(FApp& App, const std::string& Path)
+bool FEditorLayer::TryApplyWallpaperFromPath(FAppBase& App, const std::string& Path)
 {
 	const std::string Ext = TextureImageCodec::GetExtensionLower(Path);
 	if (!TextureImageCodec::IsRasterExtension(Ext) && !TextureImageCodec::IsKtx2Extension(Ext))
@@ -2316,7 +2311,7 @@ bool FEditorLayer::TryApplyWallpaperFromPath(FApp& App, const std::string& Path)
 	return true;
 }
 
-void FEditorLayer::ProcessEditorFileDrops(FApp& App)
+void FEditorLayer::ProcessEditorFileDrops(FAppBase& App)
 {
 	FPlatformSystem* Platform = App.GetExtension<FPlatformSystem>();
 	if (!Platform || !Platform->GetWindow())
@@ -3554,7 +3549,7 @@ void FEditorLayer::OpenResourceBrowser(const std::string& CatalogKey)
 	ResourceBrowserFocusKey = CatalogKey;
 }
 
-void FEditorLayer::ReleaseResourceBrowserPreview(FResourceBrowserWindow& Window, FApp& App)
+void FEditorLayer::ReleaseResourceBrowserPreview(FResourceBrowserWindow& Window, FAppBase& App)
 {
 	if (!Window.PreviewTexture.IsValid())
 	{
@@ -3571,7 +3566,7 @@ void FEditorLayer::ReleaseResourceBrowserPreview(FResourceBrowserWindow& Window,
 	Window.PreviewGeneration = 0;
 }
 
-void FEditorLayer::DrawOpenResourceBrowsers(FApp& App)
+void FEditorLayer::DrawOpenResourceBrowsers(FAppBase& App)
 {
 	if (OpenResourceBrowsers.empty())
 	{
@@ -3692,7 +3687,7 @@ void FEditorLayer::DrawOpenResourceBrowsers(FApp& App)
 	}
 }
 
-void FEditorLayer::DrawResourceBrowserBody(FResourceBrowserWindow& Window, FResource& Resource, FApp& App)
+void FEditorLayer::DrawResourceBrowserBody(FResourceBrowserWindow& Window, FResource& Resource, FAppBase& App)
 {
 	const EResourceType Type = Resource.GetType();
 	if (Type == EResourceType::Texture2D
@@ -3860,7 +3855,7 @@ void FEditorLayer::DrawResourceBrowserBody(FResourceBrowserWindow& Window, FReso
 	ImGui::TextDisabled("No specialized browser for this type yet.");
 }
 
-void FEditorLayer::DrawOutputPanel(FApp& App)
+void FEditorLayer::DrawOutputPanel(FAppBase& App)
 {
 	ImGuiWindowClass OutputClass;
 	OutputClass.DockNodeFlagsOverrideSet = static_cast<ImGuiDockNodeFlags>(
@@ -4030,7 +4025,7 @@ void FEditorLayer::EnsureSequenceGraphNodeLayout(const std::vector<IEngineExtens
 	bSequenceGraphLayoutApplied = true;
 }
 
-void FEditorLayer::DrawSequenceGraphPanel(FApp& App)
+void FEditorLayer::DrawSequenceGraphPanel(FAppBase& App)
 {
 	if (!BeginEditorDockPanel(kWinSequenceGraph, &bShowSequenceGraphPanel))
 	{
@@ -4060,7 +4055,7 @@ void FEditorLayer::DrawSequenceGraphPanel(FApp& App)
 		bSequenceGraphLayoutApplied = false;
 	}
 	ImGui::SameLine();
-	if (ImGui::RadioButton("FApp::Run lifecycle", SequenceGraphViewMode == 1))
+	if (ImGui::RadioButton("FAppBase::Run lifecycle", SequenceGraphViewMode == 1))
 	{
 		SequenceGraphViewMode = 1;
 		bSequenceGraphLayoutApplied = false;
@@ -4495,7 +4490,7 @@ void FEditorLayer::SendAgentMessage(std::string Text)
 	AgentChat->SendUserMessage(std::move(Text));
 }
 
-void FEditorLayer::DrainEngineLogs(FApp& App)
+void FEditorLayer::DrainEngineLogs(FAppBase& App)
 {
 	std::vector<FCapturedLogLine> Captured;
 	App.GetLog().DrainCapturedLines(Captured);
@@ -4505,7 +4500,7 @@ void FEditorLayer::DrainEngineLogs(FApp& App)
 	}
 }
 
-void FEditorLayer::ExecuteConsoleLine(FApp& App, const std::string& RawLine)
+void FEditorLayer::ExecuteConsoleLine(FAppBase& App, const std::string& RawLine)
 {
 	const std::string Line = TrimAscii(RawLine);
 	if (Line.empty())
@@ -4577,7 +4572,7 @@ void FEditorLayer::ExecuteConsoleLine(FApp& App, const std::string& RawLine)
 }
 
 
-FEditorUIRegistry* TryGetEditorUIRegistry(FApp& App)
+FEditorUIRegistry* TryGetEditorUIRegistry(FAppBase& App)
 {
 	FEditorLayer* Editor = App.GetExtension<FEditorLayer>();
 	if (!Editor)

@@ -11,7 +11,7 @@
 
 #include <memory>
 
-class FHiyajoProjectApp : public Maho::FApp
+class FHiyajoProjectApp : public Maho::FGameApp
 {
 protected:
 	virtual void Configure(Maho::FConfig& OutConfig) override
@@ -29,15 +29,23 @@ protected:
 		OutConfig.ProjectScriptsDir = "Scripts";
 	}
 
+	Maho::FSystemGroup* CreateWorld() override
+	{
+		return new FGameWorldLayer();
+	}
+
 	virtual bool PreInitialize() override
 	{
+		if (!Maho::FGameApp::PreInitialize())
+		{
+			return false;
+		}
+
 		using Maho::EExtensionPriority;
 
 		RegisterExtension<Maho::FPlatformSystem>(EExtensionPriority::System);
-		RegisterExtension<Maho::FRenderSystem>(EExtensionPriority::System);
 		RegisterExtension<Maho::FResourceSystem>(EExtensionPriority::System);
 		RegisterExtension<Maho::FScriptSystem>(EExtensionPriority::Overlay);
-		RegisterExtension<FGameWorldLayer>(EExtensionPriority::Layer);
 
 #if defined(GAME_WITH_EDITOR) && defined(MAHO_WITH_IMGUI)
 		// RegisterExtension<Maho::FEditorLayer>(EExtensionPriority::Overlay);
@@ -58,7 +66,7 @@ protected:
 	}
 };
 
-Maho::FApp* Maho::CreateApplication()
+Maho::FAppBase* Maho::CreateApplication()
 {
 	return new FHiyajoProjectApp();
 }

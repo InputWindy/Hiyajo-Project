@@ -10,7 +10,7 @@
 
 The engine (bottom) provides **five infrastructure primitives**:
 
-1. **`FApp`** drives the extension lifecycle (Init → Tick → Shutdown)
+1. **`FAppBase` / `FGameApp`** drives the extension lifecycle (Init → Tick → Shutdown)
 2. **`FPlatformSystem`** gives you a window, input, and file I/O
 3. **`FRenderSystem`** starts a render thread with `FRenderServer`
 4. **`RHI`** talks to Vulkan (resources, queues, command lists)

@@ -12,8 +12,6 @@ class FGameWorldLayer : public Maho::FInitializationSystemGroup
 public:
 	FGameWorldLayer();
 
-	bool ExecuteStage(Maho::EEngineStage Stage) override;
-
 protected:
 	void RegisterSystems(Maho::FSystemGroup& SimGroup) override;
 	void SpawnInitialEntities(Maho::FWorld& World) override;
