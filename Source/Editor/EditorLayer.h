@@ -8,7 +8,7 @@
 #include <Core/Extension/World/ECS/EntityHandle.h>
 #include "Game/GameWorldLayer.h"
 #include "Game/Components/AllComponents.h"
-#include <Core/Extension/World/Components/TransformComponent.h>
+#include "Game/Components/TransformComponent.h"
 #include <Core/Sequencer/EngineExtension.h>
 #include <Core/System/Log.h>
 #include <Core/Sequencer/EngineStage.h>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Core/Extension/World/Components/ScriptComponent.h>
+#include "Game/Components/ScriptComponent.h"
 
 #include <cstdint>
 #include <cstring>

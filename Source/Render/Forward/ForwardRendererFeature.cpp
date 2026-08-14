@@ -7,7 +7,7 @@
 #include <Core/System/Utf8Path.h>
 #include <Core/Extension/World/ECS/World.h>
 #include <Core/Extension/World/ECS/Query.h>
-#include <Core/Extension/World/Components/TransformComponent.h>
+#include "Game/Components/TransformComponent.h"
 #include <Render/RDG/RDGBuilder.h>
 #include <Render/RenderSystem.h>
 #include <Render/Shader/ShaderCompiler.h>

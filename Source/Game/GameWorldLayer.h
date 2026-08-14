@@ -16,4 +16,5 @@ public:
 protected:
 	void RegisterSystems(Maho::FSystemGroup& SimGroup) override;
 	void SpawnInitialEntities(Maho::FWorld& World) override;
+	void OnStageDispatched(Maho::EEngineStage Stage, float DeltaTime) override;
 };
