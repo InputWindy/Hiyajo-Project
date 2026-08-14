@@ -9,7 +9,7 @@
 #include <Core/Extension/World/ECS/Query.h>
 #include <Core/Extension/World/Components/TransformComponent.h>
 #include <Render/RDG/RDGBuilder.h>
-#include <Render/RenderServer.h>
+#include <Render/RenderSystem.h>
 #include <Render/SceneUpdatePacket.h>
 #include <Render/ShaderCompiler.h>
 
@@ -139,10 +139,10 @@ FForwardRendererFeature::FForwardRendererFeature()
 
 FForwardRendererFeature::~FForwardRendererFeature() = default;
 
-bool FForwardRendererFeature::OnRegister(FRenderServer& RenderServer)
+bool FForwardRendererFeature::OnRegister(FRenderSystem& RenderSystem)
 {
 	DebugLog("ForwardRenderer: OnRegister");
-	if (!SetupPersistentResources(RenderServer))
+	if (!SetupPersistentResources(RenderSystem))
 	{
 		DebugLog("ForwardRenderer: persistent resource setup FAILED");
 		MAHO_CORE_ERROR("ForwardRenderer: persistent resource setup failed");
@@ -153,19 +153,19 @@ bool FForwardRendererFeature::OnRegister(FRenderServer& RenderServer)
 	return true;
 }
 
-void FForwardRendererFeature::OnUnregister(FRenderServer& RenderServer)
+void FForwardRendererFeature::OnUnregister(FRenderSystem& RenderSystem)
 {
 	auto& S = *Ptr;
 	if (!S.bInitialized) return;
 
 	if (S.GameViewImGuiTexture.IsValid())
 	{
-		RenderServer.SetGameViewImGuiTexture({});
-		RenderServer.SetGameViewExtent(0, 0);
-		RenderServer.GetImGui().DestroyTexture(RenderServer.GetRHIServer(), S.GameViewImGuiTexture);
+		RenderSystem.SetGameViewImGuiTexture({});
+		RenderSystem.SetGameViewExtent(0, 0);
+		RenderSystem.GetImGui().DestroyTexture(RenderSystem.GetRHIServer(), S.GameViewImGuiTexture);
 	}
 
-	IRHI* RHI = RenderServer.GetRHIServer().GetRHI();
+	IRHI* RHI = RenderSystem.GetRHIServer().GetRHI();
 	if (!RHI) { S.bInitialized = false; return; }
 
 	DestroyShaderResources();
@@ -198,13 +198,13 @@ void FForwardRendererFeature::BuildCubeGeometry()
 	}
 }
 
-bool FForwardRendererFeature::SetupPersistentResources(FRenderServer& RenderServer)
+bool FForwardRendererFeature::SetupPersistentResources(FRenderSystem& RenderSystem)
 {
 	auto& S = *Ptr;
 	if (S.bInitialized) return true;
 
-	S.RHI = RenderServer.GetRHIServer().GetRHI();
-	S.RenderServer = &RenderServer;
+	S.RHI = RenderSystem.GetRHIServer().GetRHI();
+	S.RenderSystem = &RenderSystem;
 	if (!S.RHI) return false;
 
 	BuildCubeGeometry();
@@ -247,15 +247,15 @@ bool FForwardRendererFeature::SetupPersistentResources(FRenderServer& RenderServ
 		S.ViewportTexView = S.RHI->CreateTextureView(ViewDesc);
 	}
 
-	if (RenderServer.GetImGui().IsInitialized())
+	if (RenderSystem.GetImGui().IsInitialized())
 	{
 		FImGuiTextureHandle Handle;
-		if (RenderServer.GetImGui().RegisterExternalSampledTexture(
-			RenderServer.GetRHIServer(), S.ViewportTexView, Handle))
+		if (RenderSystem.GetImGui().RegisterExternalSampledTexture(
+			RenderSystem.GetRHIServer(), S.ViewportTexView, Handle))
 		{
 			S.GameViewImGuiTexture = Handle;
-			RenderServer.SetGameViewImGuiTexture(Handle);
-			RenderServer.SetGameViewExtent(S.VpWidth, S.VpHeight);
+			RenderSystem.SetGameViewImGuiTexture(Handle);
+			RenderSystem.SetGameViewExtent(S.VpWidth, S.VpHeight);
 		}
 	}
 
@@ -442,9 +442,9 @@ void FForwardRendererFeature::ComputeFrustumPlanes(const FCameraFrameData& Camer
 	float F = 1.0f / std::tan((FOV * 0.5f) * 3.14159265f / 180.0f);
 	float Proj[16] = {
 		F / Aspect, 0, 0, 0,
-		0, F, 0, 0,
-		0, 0, Far / (Far - Near), 1,
-		0, 0, -(Near * Far) / (Far - Near), 0,
+		0, -F, 0, 0,
+		0, 0, Far / (Near - Far), -1,
+		0, 0, Far * Near / (Near - Far), 0,
 	};
 	float ViewProj[16];
 	for (int Col = 0; Col < 4; ++Col)
@@ -473,7 +473,7 @@ void FForwardRendererFeature::ExecuteStage(ERenderPipelineStage Stage, const FFo
 void FForwardRendererFeature::ExecuteBeginFrame(const FForwardDrawContext& Context, FFrameContext& FrameCtx, FRDGBuilder& GB)
 {
 	auto& S = *Ptr;
-	if (!S.RenderServer) return;
+	if (!S.RenderSystem) return;
 	if (!EnsureShaderReady()) return;
 
 	const std::uint32_t Slot = static_cast<std::uint32_t>(FrameCtx.FrameIndex % FrameRingSize);
@@ -487,7 +487,8 @@ void FForwardRendererFeature::ExecuteBeginFrame(const FForwardDrawContext& Conte
 	{
 		float F = 1.0f / std::tan((Scene.Camera.FOV * 0.5f) * 3.14159265f / 180.0f);
 		float A = Scene.Camera.AspectRatio, N = Scene.Camera.NearPlane, Ff = Scene.Camera.FarPlane;
-		float P[16] = { F/A, 0, 0, 0,  0, F, 0, 0,  0, 0, Ff/(Ff-N), 1,  0, 0, -(N*Ff)/(Ff-N), 0 };
+		// Vulkan clip space: depth [0,1] ([3][2]=-1, [2][2]=Ff/(N-Ff)), y-down ([1][1]=-F).
+		float P[16] = { F/A, 0, 0, 0,  0, -F, 0, 0,  0, 0, Ff/(N-Ff), -1,  0, 0, Ff*N/(N-Ff), 0 };
 		std::memcpy(FrameUni.Proj, P, sizeof(P));
 		for (int Col = 0; Col < 4; ++Col)
 			for (int Row = 0; Row < 4; ++Row)
@@ -506,7 +507,7 @@ void FForwardRendererFeature::ExecuteBeginFrame(const FForwardDrawContext& Conte
 void FForwardRendererFeature::ExecuteBasePass(const FForwardDrawContext& Context, FFrameContext& FrameCtx, FRDGBuilder& GB)
 {
 	auto& S = *Ptr;
-	if (!S.RenderServer) return;
+	if (!S.RenderSystem) return;
 	if (!EnsureShaderReady()) return;
 
 	const std::uint32_t Slot = static_cast<std::uint32_t>(FrameCtx.FrameIndex % FrameRingSize);

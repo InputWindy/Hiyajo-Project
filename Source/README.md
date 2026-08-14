@@ -143,8 +143,7 @@ virtual bool PreInitialize() override
 
 virtual bool PostInitialize() override
 {
-    auto& Server = GetExtension<Maho::FRenderSystem>()->GetRenderServer();
-    Server.RegisterFeature<Maho::FForwardRendererFeature>();
+    GetExtension<Maho::FRenderSystem>()->RegisterFeature<Maho::FForwardRendererFeature>();
     return true;
 }
 ```

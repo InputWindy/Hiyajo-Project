@@ -50,8 +50,7 @@ protected:
 		auto* RenderSystem = GetExtension<Maho::FRenderSystem>();
 		if (RenderSystem)
 		{
-			auto& Server = RenderSystem->GetRenderServer();
-			Server.RegisterFeature<Maho::FForwardRendererFeature>();
+			RenderSystem->RegisterFeature<Maho::FForwardRendererFeature>();
 		}
 		return true;
 	}

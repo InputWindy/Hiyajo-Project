@@ -16,7 +16,7 @@
 namespace Maho
 {
 
-class FRenderServer;
+class FRenderSystem;
 class IRHI;
 class FWorld;
 class FShaderDatabase;
@@ -64,8 +64,8 @@ public:
 	FForwardRendererFeature();
 	~FForwardRendererFeature() override;
 
-	bool OnRegister(FRenderServer& RenderServer) override;
-	void OnUnregister(FRenderServer& RenderServer) override;
+	bool OnRegister(FRenderSystem& RenderSystem) override;
+	void OnUnregister(FRenderSystem& RenderSystem) override;
 	void ExecuteStage(ERenderPipelineStage Stage, const FForwardDrawContext& Context, FFrameContext& FrameCtx, FRDGBuilder& GB);
 
 	/** Mark shader dirty so next frame recompiles (hot-reload from editor). */
@@ -79,7 +79,7 @@ private:
 		bool bInitialized = false;
 		bool bShaderReady = false;
 		IRHI* RHI = nullptr;
-		FRenderServer* RenderServer = nullptr;
+		FRenderSystem* RenderSystem = nullptr;
 
 		// ── GPU Scene (ring buffer — one slot per frame in flight) ──
 		FRHIBuffer* FrameUniformBuf[FrameRingSize] = {};    // view/proj UBO
@@ -107,7 +107,7 @@ private:
 
 	std::unique_ptr<FImpl> Ptr;
 
-	bool SetupPersistentResources(FRenderServer& RenderServer);
+	bool SetupPersistentResources(FRenderSystem& RenderSystem);
 	bool EnsureShaderReady();
 	void DestroyShaderResources();
 	void BuildCubeGeometry();

@@ -1,5 +1,3 @@
-// FIXME: EditorLayer needs porting to FResource API. Temporarily disabled.
-#if 0
 #include "Editor/EditorLayer.h"
 
 #include <Core/Application/App.h>
@@ -297,7 +295,6 @@ namespace SeqGraphIds
 
 	switch (TypeHint)
 	{
-	case EResourceType::Texture:
 	case EResourceType::Texture2D:
 		return Resources.Import<TResourceImporter<FTexture2D>>(std::move(Config), OutSoftPath);
 	case EResourceType::Texture3D:
@@ -1639,9 +1636,9 @@ void FEditorLayer::DrawMainViewportPanel()
 	{
 		if (FRenderSystem* Render = GApp->GetExtension<FRenderSystem>())
 		{
-			GameViewTex = Render->GetRenderServer().GetGameViewImGuiTexture();
-			GameViewW = Render->GetRenderServer().GetGameViewWidth();
-			GameViewH = Render->GetRenderServer().GetGameViewHeight();
+			GameViewTex = Render->GetGameViewImGuiTexture();
+			GameViewW = Render->GetGameViewWidth();
+			GameViewH = Render->GetGameViewHeight();
 		}
 	}
 
@@ -1764,47 +1761,19 @@ void FEditorLayer::DrawSceneOutliner()
 
 	if (ImGui::TreeNodeEx("World", RootFlags))
 	{
-		// ── Persistent Entities ──
-		ImGuiTreeNodeFlags PersFlags = ImGuiTreeNodeFlags_DefaultOpen;
-		const auto& PersEntities = ECSWorld.GetPersistentEntities();
+		// ── Entities ──
+		ImGuiTreeNodeFlags EntitiesFlags = ImGuiTreeNodeFlags_DefaultOpen;
+		int EntitiesId = 1000;
 
-		int PersId = 1000;
-		if (ImGui::TreeNodeEx("Persistent Entities", PersFlags, "%s", ICON_FA_CAMERA " Persistent Entities"))
-		{
-			for (const FEntityHandle& Handle : PersEntities)
-			{
-				if (!Mgr.IsValid(Handle)) continue;
-
-				char Label[128];
-				std::snprintf(Label, sizeof(Label), "Entity %u (Gen %u)##Pers%u",
-					Handle.Index, Handle.Generation, ++PersId);
-
-				ImGuiTreeNodeFlags LeafFlags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen
-					| (Handle.Index == SelectedEntity.Index && Handle.Generation == SelectedEntity.Generation
-						? ImGuiTreeNodeFlags_Selected : 0);
-
-				ImGui::TreeNodeEx(Label, LeafFlags);
-				if (ImGui::IsItemClicked())
-				{
-					SelectedEntity = Handle;
-				}
-			}
-			ImGui::TreePop();
-		}
-
-		// ── Level Entities ──
-		ImGuiTreeNodeFlags LevelFlags = ImGuiTreeNodeFlags_DefaultOpen;
-		int LevelId = 2000;
-
-		if (ImGui::TreeNodeEx("Level Entities", LevelFlags, "%s", ICON_FA_CUBE " Level Entities"))
+		if (ImGui::TreeNodeEx("Entities", EntitiesFlags, "%s", ICON_FA_CUBES " Entities"))
 		{
 			Mgr.ForEachEntity([&](FEntityHandle Handle)
 			{
-				if (Mgr.HasTag<Maho::FMainCameraTag>(Handle)) return;
+				const bool bIsCamera = Mgr.HasTag<Maho::FMainCameraTag>(Handle);
 
 				char Label[128];
-				std::snprintf(Label, sizeof(Label), "Entity %u (Gen %u)##Level%u",
-					Handle.Index, Handle.Generation, ++LevelId);
+				std::snprintf(Label, sizeof(Label), "%sEntity %u (Gen %u)##Ent%u",
+					bIsCamera ? ICON_FA_CAMERA " " : "", Handle.Index, Handle.Generation, ++EntitiesId);
 
 				ImGuiTreeNodeFlags LeafFlags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen
 					| (Handle.Index == SelectedEntity.Index && Handle.Generation == SelectedEntity.Generation
@@ -2193,8 +2162,8 @@ void FEditorLayer::ClearWallpaper(FApp& App)
 
 	if (FRenderSystem* Render = App.GetExtension<FRenderSystem>())
 	{
-		Render->GetRenderServer().GetImGui().DestroyTexture(
-			Render->GetRenderServer().GetRHIServer(),
+		Render->GetImGui().DestroyTexture(
+			Render->GetRHIServer(),
 			WallpaperTexture);
 	}
 	else
@@ -2321,8 +2290,8 @@ bool FEditorLayer::TryApplyWallpaperFromPath(FApp& App, const std::string& Path)
 		return false;
 	}
 
-	FImGuiSystem& ImGuiSys = Render->GetRenderServer().GetImGui();
-	FRHIServer& RHIServer = Render->GetRenderServer().GetRHIServer();
+	FImGuiSystem& ImGuiSys = Render->GetImGui();
+	FRHIServer& RHIServer = Render->GetRHIServer();
 	if (WallpaperTexture.IsValid())
 	{
 		ImGuiSys.DestroyTexture(RHIServer, WallpaperTexture);
@@ -2410,7 +2379,6 @@ namespace
 {
 	switch (Type)
 	{
-	case EResourceType::Texture:
 	case EResourceType::Texture2D:
 		return "Texture2D";
 	case EResourceType::Texture3D:
@@ -2442,7 +2410,6 @@ namespace
 {
 	switch (Type)
 	{
-	case EResourceType::Texture:
 	case EResourceType::Texture2D:
 	case EResourceType::Texture3D:
 	case EResourceType::TextureCube:
@@ -2469,7 +2436,6 @@ namespace
 {
 	switch (Type)
 	{
-	case EResourceType::Texture:
 	case EResourceType::Texture2D:
 	case EResourceType::Texture3D:
 	case EResourceType::TextureCube:
@@ -2559,14 +2525,9 @@ void FEditorLayer::CollectChildFolders(
 	const std::string Prefix = Parent + "/";
 	std::unordered_set<std::string> Unique;
 	Resources->ForEachRegisteredResource(
-		[&](const std::string& CatalogKey, const FObjectRef& /*Resource*/)
+		[&](const std::string& CatalogKey, FResource& /*Resource*/)
 		{
-			std::string SoftPath;
-			if (!SoftPath.TrySetPath(CatalogKey) || !SoftPath.IsValid())
-			{
-				return;
-			}
-			const std::string& PackageName = SoftPath.GetPackageName();
+			const std::string PackageName = FPaths::GetPackageName(CatalogKey);
 			if (PackageName.rfind(Prefix, 0) != 0)
 			{
 				return;
@@ -2978,7 +2939,7 @@ void FEditorLayer::DrawContentBrowserTiles()
 	if (FolderVirtualEntries.empty() && AssetEntries.empty())
 	{
 		ImGui::TextDisabled("Empty  %s", CurrentVirtualPath.c_str());
-		ImGui::TextDisabled("Showing registered UResource assets only.");
+		ImGui::TextDisabled("Showing registered FResource assets only.");
 		const std::string Disk = FPaths::ConvertVirtualPathToFilename(CurrentVirtualPath);
 		if (!Disk.empty())
 		{
@@ -3018,30 +2979,29 @@ void FEditorLayer::RefreshContentListing()
 		const std::string Folder = FPaths::NormalizePackagePath(CurrentVirtualPath);
 		std::size_t ResourceCount = 0;
 		Resources->ForEachRegisteredResource(
-			[&](const std::string& CatalogKey, const FObjectRef& ResourceRef)
+			[&](const std::string& CatalogKey, FResource& Resource)
 			{
 				++ResourceCount;
-				std::string SoftPath;
-				if (!SoftPath.TrySetPath(CatalogKey) || !SoftPath.IsValid())
+				const std::string PackageName = FPaths::GetPackageName(CatalogKey);
+				if (PackageName.empty())
 				{
 					return;
 				}
-				// SoftPath PackageName "/Game/Foo" lists asset "Foo" under folder "/Game".
-				if (VirtualPathParent(SoftPath.GetPackageName()) != Folder)
+				// Package "/Game/Foo" lists asset "Foo" under folder "/Game".
+				if (VirtualPathParent(PackageName) != Folder)
 				{
 					return;
 				}
-				UResource* Resource = ResourceRef.Cast<UResource>();
-				if (!Resource)
-				{
-					return;
-				}
+				const std::string AssetName =
+					CatalogKey.size() > PackageName.size() + 1
+						? CatalogKey.substr(PackageName.size() + 1)
+						: std::string();
 				FContentAssetEntry Entry;
 				Entry.CatalogKey = CatalogKey;
-				Entry.DisplayName = SoftPath.GetAssetName();
-				Entry.Type = Resource->GetType();
-				Entry.LoadState = Resource->GetLoadState();
-				Entry.bDirty = Resource->IsDirty();
+				Entry.DisplayName = AssetName;
+				Entry.Type = Resource.GetType();
+				Entry.LoadState = Resource.GetLoadState();
+				Entry.bDirty = Resource.IsDirty();
 				AssetEntries.push_back(std::move(Entry));
 			});
 
@@ -3392,10 +3352,10 @@ void FEditorLayer::TickManualContentImport()
 		}
 
 		const std::string CatalogKey = Job.PackagePath + "." + Job.ObjectName;
-		if (Resources->FindRegisteredResource(CatalogKey))
+		if (Resources->Find(CatalogKey))
 		{
 			AppendOutput("Import skipped — already registered: " + CatalogKey, spdlog::level::warn);
-			Job.SoftPath = std::string(Job.PackagePath, Job.ObjectName);
+			Job.SoftPath = CatalogKey;
 			Job.bKicked = true;
 			continue;
 		}
@@ -3411,9 +3371,9 @@ void FEditorLayer::TickManualContentImport()
 		Job.SoftPath = OutSoftPath;
 		Job.bKicked = true;
 		ManualImportCurrentName = PathToUtf8(PathFromUtf8(Job.SourcePath).filename());
-		if (Job.SoftPath.IsValid())
+		if (!Job.SoftPath.empty())
 		{
-			AppendOutput("Import kicked: " + Job.SoftPath.GetAssetPathString()
+			AppendOutput("Import kicked: " + Job.SoftPath
 				+ " <- " + Job.SourcePath);
 		}
 		else
@@ -3433,7 +3393,7 @@ void FEditorLayer::TickManualContentImport()
 			bAnyPending = true;
 			continue;
 		}
-		if (!Job.SoftPath.IsValid())
+		if (Job.SoftPath.empty())
 		{
 			++ManualImportFailed;
 			AppendOutput("Import FAILED (invalid SoftPath): " + Job.SourcePath, spdlog::level::err);
@@ -3563,21 +3523,13 @@ bool FEditorLayer::SaveContentAsset(const std::string& CatalogKey)
 		return false;
 	}
 
-	FObjectRef Ref = Resources->FindRegisteredResource(CatalogKey);
-	UResource* Resource = Ref.Cast<UResource>();
+	Ref<FResource> Resource = Resources->Find(CatalogKey);
 	if (!Resource)
 	{
 		return false;
 	}
 
-	FObjectRef PackageRef = Resource->GetPackage();
-		UPackage* Package = PackageRef.Cast<UPackage>();
-		if (!Package)
-		{
-			return false;
-		}
-
-		return Resources->EnqueueSavePackage(PackageRef, true);
+	return Resources->EnqueueSavePackage(FPaths::GetPackageName(CatalogKey), true);
 }
 
 void FEditorLayer::OpenResourceBrowser(const std::string& CatalogKey)
@@ -3593,8 +3545,7 @@ void FEditorLayer::OpenResourceBrowser(const std::string& CatalogKey)
 	}
 
 	FResourceSystem* Resources = Detail::GetResourceSystem();
-	FObjectRef Ref = Resources ? Resources->FindRegisteredResource(CatalogKey) : FObjectRef{};
-	UResource* Resource = Ref.Cast<UResource>();
+	Ref<FResource> Resource = Resources ? Resources->Find(CatalogKey) : Ref<FResource>{};
 	FResourceBrowserWindow Window;
 	Window.CatalogKey = CatalogKey;
 	Window.Type = Resource ? Resource->GetType() : EResourceType::Unknown;
@@ -3612,8 +3563,8 @@ void FEditorLayer::ReleaseResourceBrowserPreview(FResourceBrowserWindow& Window,
 	FRenderSystem* Render = App.GetExtension<FRenderSystem>();
 	if (Render)
 	{
-		Render->GetRenderServer().GetImGui().DestroyTexture(
-			Render->GetRenderServer().GetRHIServer(),
+		Render->GetImGui().DestroyTexture(
+			Render->GetRHIServer(),
 			Window.PreviewTexture);
 	}
 	Window.PreviewTexture.Reset();
@@ -3674,11 +3625,14 @@ void FEditorLayer::DrawOpenResourceBrowsers(FApp& App)
 				continue;
 			}
 
-			std::string SoftPath;
-			(void)SoftPath.TrySetPath(Window.CatalogKey);
+			const std::string PackageName = FPaths::GetPackageName(Window.CatalogKey);
+			const std::string AssetName =
+				Window.CatalogKey.size() > PackageName.size() + 1
+					? Window.CatalogKey.substr(PackageName.size() + 1)
+					: Window.CatalogKey;
 			const std::string TabLabel =
 				std::string(ResourceTypeGlyph(Window.Type)) + "  "
-				+ (SoftPath.IsValid() ? SoftPath.GetAssetName() : Window.CatalogKey)
+				+ AssetName
 				+ "###RB_" + Window.CatalogKey;
 
 			ImGuiTabItemFlags TabFlags = ImGuiTabItemFlags_None;
@@ -3691,8 +3645,8 @@ void FEditorLayer::DrawOpenResourceBrowsers(FApp& App)
 			bool bTabOpen = true;
 			if (ImGui::BeginTabItem(TabLabel.c_str(), &bTabOpen, TabFlags))
 			{
-				UResource* Resource =
-					Resources ? Resources->FindRegisteredResource(Window.CatalogKey).Cast<UResource>() : nullptr;
+				Ref<FResource> Resource =
+					Resources ? Resources->Find(Window.CatalogKey) : Ref<FResource>{};
 				if (!Resource)
 				{
 					ImGui::TextDisabled("Resource no longer in catalog.");
@@ -3738,20 +3692,19 @@ void FEditorLayer::DrawOpenResourceBrowsers(FApp& App)
 	}
 }
 
-void FEditorLayer::DrawResourceBrowserBody(FResourceBrowserWindow& Window, UResource& Resource, FApp& App)
+void FEditorLayer::DrawResourceBrowserBody(FResourceBrowserWindow& Window, FResource& Resource, FApp& App)
 {
 	const EResourceType Type = Resource.GetType();
-	if (Type == EResourceType::Texture
-		|| Type == EResourceType::Texture2D
+	if (Type == EResourceType::Texture2D
 		|| Type == EResourceType::Texture3D
 		|| Type == EResourceType::TextureCube
 		|| Type == EResourceType::TextureCubeArray
 		|| Type == EResourceType::Texture2DArray)
 	{
-		UTexture* Texture = dynamic_cast<UTexture*>(&Resource);
+		FTexture* Texture = dynamic_cast<FTexture*>(&Resource);
 		if (!Texture)
 		{
-			ImGui::TextDisabled("Not a UTexture.");
+			ImGui::TextDisabled("Not a FTexture.");
 			return;
 		}
 		ImGui::Text(
@@ -3771,8 +3724,8 @@ void FEditorLayer::DrawResourceBrowserBody(FResourceBrowserWindow& Window, UReso
 				FRenderSystem* Render = App.GetExtension<FRenderSystem>();
 				if (Render)
 				{
-					const bool bOk = Render->GetRenderServer().GetImGui().CreateRgba8Texture(
-						Render->GetRenderServer().GetRHIServer(),
+					const bool bOk = Render->GetImGui().CreateRgba8Texture(
+						Render->GetRHIServer(),
 						Texture->GetWidth(),
 						Texture->GetHeight(),
 						Texture->GetPixels().data(),
@@ -3808,24 +3761,24 @@ void FEditorLayer::DrawResourceBrowserBody(FResourceBrowserWindow& Window, UReso
 
 	if (Type == EResourceType::Mesh)
 	{
-		if (UStaticMesh* Mesh = dynamic_cast<UStaticMesh*>(&Resource))
+		if (FStaticMesh* Mesh = dynamic_cast<FStaticMesh*>(&Resource))
 		{
 			ImGui::Text("Vertices: %zu", Mesh->GetPositions().size() / 3u);
 			ImGui::Text("Indices: %zu", Mesh->GetIndices().size());
-			ImGui::TextWrapped("Material: %s", Mesh->GetMaterial().ToString().c_str());
+			ImGui::TextWrapped("Material: %s", Mesh->GetMaterial().c_str());
 		}
 		return;
 	}
 
 	if (Type == EResourceType::Material)
 	{
-		if (UMaterial* Material = dynamic_cast<UMaterial*>(&Resource))
+		if (FMaterial* Material = dynamic_cast<FMaterial*>(&Resource))
 		{
-			ImGui::TextWrapped("BaseColor: %s", Material->GetBaseColorTexture().ToString().c_str());
-			ImGui::TextWrapped("Normal: %s", Material->GetNormalTexture().ToString().c_str());
-			ImGui::TextWrapped("MR: %s", Material->GetMetallicRoughnessTexture().ToString().c_str());
-			ImGui::TextWrapped("Occlusion: %s", Material->GetOcclusionTexture().ToString().c_str());
-			ImGui::TextWrapped("Emissive: %s", Material->GetEmissiveTexture().ToString().c_str());
+			ImGui::TextWrapped("BaseColor: %s", Material->GetBaseColorTexture().c_str());
+			ImGui::TextWrapped("Normal: %s", Material->GetNormalTexture().c_str());
+			ImGui::TextWrapped("MR: %s", Material->GetMetallicRoughnessTexture().c_str());
+			ImGui::TextWrapped("Occlusion: %s", Material->GetOcclusionTexture().c_str());
+			ImGui::TextWrapped("Emissive: %s", Material->GetEmissiveTexture().c_str());
 			ImGui::Text(
 				"Metallic=%.2f Roughness=%.2f",
 				Material->MetallicFactor,
@@ -3841,7 +3794,7 @@ void FEditorLayer::DrawResourceBrowserBody(FResourceBrowserWindow& Window, UReso
 
 	if (Type == EResourceType::Skeleton)
 	{
-		if (USkeleton* Skeleton = dynamic_cast<USkeleton*>(&Resource))
+		if (FSkeleton* Skeleton = dynamic_cast<FSkeleton*>(&Resource))
 		{
 			ImGui::Text("Bones: %zu", Skeleton->GetBones().size());
 			if (ImGui::BeginChild("##BoneList", ImVec2(0, 0), ImGuiChildFlags_Borders))
@@ -3859,10 +3812,10 @@ void FEditorLayer::DrawResourceBrowserBody(FResourceBrowserWindow& Window, UReso
 
 	if (Type == EResourceType::Animation)
 	{
-		if (UAnimation* Animation = dynamic_cast<UAnimation*>(&Resource))
+		if (FAnimation* Animation = dynamic_cast<FAnimation*>(&Resource))
 		{
 			ImGui::Text("Duration: %.3f s", Animation->GetDurationSeconds());
-			ImGui::TextWrapped("Skeleton: %s", Animation->GetSkeleton().ToString().c_str());
+			ImGui::TextWrapped("Skeleton: %s", Animation->GetSkeleton().c_str());
 			ImGui::Text("Tracks: %zu", Animation->GetTracks().size());
 			if (ImGui::BeginChild("##AnimTracks", ImVec2(0, 0), ImGuiChildFlags_Borders))
 			{
@@ -3878,7 +3831,7 @@ void FEditorLayer::DrawResourceBrowserBody(FResourceBrowserWindow& Window, UReso
 
 	if (Type == EResourceType::AnimationGraph)
 	{
-		if (UAnimationGraph* Graph = dynamic_cast<UAnimationGraph*>(&Resource))
+		if (FAnimationGraph* Graph = dynamic_cast<FAnimationGraph*>(&Resource))
 		{
 			if (ImGui::BeginChild("##AnimGraphJson", ImVec2(0, 0), ImGuiChildFlags_Borders))
 			{
@@ -4635,4 +4588,3 @@ FEditorUIRegistry* TryGetEditorUIRegistry(FApp& App)
 }
 
 } // namespace Maho
-#endif // #if 0 — EditorLayer disabled, pending FResource port
