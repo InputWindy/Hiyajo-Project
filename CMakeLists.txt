@@ -50,6 +50,27 @@ if(MAHO_CPROJECT)
 	message(STATUS "Maho: using .cproject for plugins: ${MAHO_CPROJECT}")
 endif()
 
+# Assimp — project resource codec (MeshModelCodec). Fetched BEFORE the engine
+# so assimp's bundled zlibstatic exists when Maho.dll links FCompression.
+include(FetchContent)
+set(FETCHCONTENT_UPDATES_DISCONNECTED ON CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
+set(ASSIMP_INSTALL OFF CACHE BOOL "" FORCE)
+set(ASSIMP_INJECT_DEBUG_POSTFIX OFF CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_ZLIB ON CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(ASSIMP_WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
+enable_language(C)
+FetchContent_Declare(
+	assimp
+	GIT_REPOSITORY https://github.com/assimp/assimp.git
+	GIT_TAG v5.3.1
+	GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(assimp)
+
 add_subdirectory("${MAHO_ENGINE_ROOT}/Maho" "${CMAKE_BINARY_DIR}/MahoBuild")
 
 set(GAME_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
