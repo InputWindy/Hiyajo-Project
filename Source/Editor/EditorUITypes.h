@@ -7,7 +7,7 @@
 namespace Maho
 {
 
-class FAppBase;
+class FEngineBase;
 class FEditorLayer;
 class FEditorUIRegistry;
 
@@ -29,7 +29,7 @@ struct FEditorUICatalog
 
 struct FEditorUIDrawContext
 {
-	FAppBase* App = nullptr;
+	FEngineBase* App = nullptr;
 	FEditorLayer* Editor = nullptr;
 	FEditorUIRegistry* Registry = nullptr;
 	/** Secondary toolbar square button size (height of strip). */

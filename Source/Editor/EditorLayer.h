@@ -111,21 +111,21 @@ private:
 	void UnmountEditor();
 	void RegisterBuiltinUIContributions();
 	void RegisterDummyUIContributions();
-	[[nodiscard]] FEditorUIDrawContext MakeUIDrawContext(FAppBase& App);
+	[[nodiscard]] FEditorUIDrawContext MakeUIDrawContext(FEngineBase& App);
 
-	void DrawMenuItems(FAppBase& App, float RowH);
+	void DrawMenuItems(FEngineBase& App, float RowH);
 	void DrawBrandBlock(float Size);
 	void DrawToolbarPrimary();
 	void DrawToolbarSecondary();
-	void DrawDockSpace(FAppBase& App);
+	void DrawDockSpace(FEngineBase& App);
 	void DrawMainViewportPanel();
 	void DrawContentBrowser();
 	void DrawContentBrowserTree();
 	void DrawContentBrowserTiles();
-	void DrawOutputPanel(FAppBase& App);
+	void DrawOutputPanel(FEngineBase& App);
 	void DrawAgentPanel();
 	void DrawBlueprintPanel();
-	void DrawSequenceGraphPanel(FAppBase& App);
+	void DrawSequenceGraphPanel(FEngineBase& App);
 	void DrawPlotPanel();
 	void DrawTransientDetailsPanel();
 	void DrawSceneOutliner();
@@ -135,10 +135,10 @@ private:
 	void EnsureSequenceGraphNodeLayout();
 	void EnsureSequenceGraphNodeLayout(const std::vector<IEngineExtension*>& Extensions);
 
-	void ProcessEditorFileDrops(FAppBase& App);
-	[[nodiscard]] bool TryApplyWallpaperFromPath(FAppBase& App, const std::string& Path);
-	void ClearWallpaper(FAppBase& App);
-	void EnsureDefaultWallpaper(FAppBase& App);
+	void ProcessEditorFileDrops(FEngineBase& App);
+	[[nodiscard]] bool TryApplyWallpaperFromPath(FEngineBase& App, const std::string& Path);
+	void ClearWallpaper(FEngineBase& App);
+	void EnsureDefaultWallpaper(FEngineBase& App);
 	[[nodiscard]] static std::string ResolveDefaultWallpaperPath();
 
 	void EnsureContentMounts();
@@ -157,13 +157,13 @@ private:
 	void DrawContentImportProgressOverlay();
 	[[nodiscard]] bool SaveContentAsset(const std::string& CatalogKey);
 	void OpenResourceBrowser(const std::string& CatalogKey);
-	void DrawOpenResourceBrowsers(FAppBase& App);
-	void DrawResourceBrowserBody(FResourceBrowserWindow& Window, FResource& Resource, FAppBase& App);
-	void ReleaseResourceBrowserPreview(FResourceBrowserWindow& Window, FAppBase& App);
+	void DrawOpenResourceBrowsers(FEngineBase& App);
+	void DrawResourceBrowserBody(FResourceBrowserWindow& Window, FResource& Resource, FEngineBase& App);
+	void ReleaseResourceBrowserPreview(FResourceBrowserWindow& Window, FEngineBase& App);
 
 	void AppendOutput(std::string Line, spdlog::level::level_enum Level = spdlog::level::info);
-	void DrainEngineLogs(FAppBase& App);
-	void ExecuteConsoleLine(FAppBase& App, const std::string& Line);
+	void DrainEngineLogs(FEngineBase& App);
+	void ExecuteConsoleLine(FEngineBase& App, const std::string& Line);
 	void EnsureDefaultDockLayout(std::uint32_t DockspaceId);
 
 	void StartAgentChat();

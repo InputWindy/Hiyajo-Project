@@ -1,6 +1,6 @@
 #include "Editor/EditorUIRegistry.h"
 
-#include <Core/App.h>
+#include <Core/EngineBase.h>
 #include <Core/Misc/Log.h>
 
 #include <imgui.h>

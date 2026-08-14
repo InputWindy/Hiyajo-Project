@@ -1,6 +1,6 @@
 #include "Editor/EditorLayer.h"
 
-#include <Core/App.h>
+#include <Core/EngineBase.h>
 #include <Core/Misc/ConfigFile.h>
 #include <Core/Misc/Console.h>
 #include "Editor/AgentChatClient.h"
@@ -485,14 +485,14 @@ void FEditorLayer::UnmountEditor()
 
 	UIRegistry.Clear();
 
-	if (GApp)
+	if (GEngine)
 	{
 		for (FResourceBrowserWindow& Window : OpenResourceBrowsers)
 		{
-			ReleaseResourceBrowserPreview(Window, *GApp);
+			ReleaseResourceBrowserPreview(Window, *GEngine);
 		}
 		OpenResourceBrowsers.clear();
-		ClearWallpaper(*GApp);
+		ClearWallpaper(*GEngine);
 	}
 	else
 	{
@@ -536,7 +536,7 @@ void FEditorLayer::UnmountEditor()
 	}
 }
 
-FEditorUIDrawContext FEditorLayer::MakeUIDrawContext(FAppBase& App)
+FEditorUIDrawContext FEditorLayer::MakeUIDrawContext(FEngineBase& App)
 {
 	FEditorUIDrawContext Ctx;
 	Ctx.App = &App;
@@ -1150,11 +1150,11 @@ bool FEditorLayer::ExecuteStage(EEngineStage Stage)
 	ImGui::ShowDemoWindow(&bShowDemoWindowDiag);
 	return true;
 #else
-	if (!GApp)
+	if (!GEngine)
 	{
 		return true;
 	}
-	FAppBase& App = *GApp;
+	FEngineBase& App = *GEngine;
 
 	DrainEngineLogs(App);
 
@@ -1220,7 +1220,7 @@ bool FEditorLayer::ExecuteStage(EEngineStage Stage)
 	return true;
 }
 
-void FEditorLayer::DrawMenuItems(FAppBase& App, float RowH)
+void FEditorLayer::DrawMenuItems(FEngineBase& App, float RowH)
 {
 	// Full-row-height menu buttons (BeginMenu in a MenuBar only hits on text height).
 	auto DrawTopLevelMenu = [&](const char* Id, const char* Label, auto&& FillMenu)
@@ -1292,9 +1292,9 @@ void FEditorLayer::DrawMenuItems(FAppBase& App, float RowH)
 #endif
 		if (ImGui::MenuItem(ICON_FA_RIGHT_FROM_BRACKET "  Exit"))
 		{
-			if (GApp)
+			if (GEngine)
 			{
-				GApp->OnRequestExit();
+				GEngine->OnRequestExit();
 			}
 		}
 		FEditorUIDrawContext Ctx = MakeUIDrawContext(App);
@@ -1354,9 +1354,9 @@ void FEditorLayer::DrawBrandBlock(float Size)
 void FEditorLayer::DrawToolbarPrimary()
 {
 	ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(6.0f, 0.0f));
-	if (GApp)
+	if (GEngine)
 	{
-		FEditorUIDrawContext Ctx = MakeUIDrawContext(*GApp);
+		FEditorUIDrawContext Ctx = MakeUIDrawContext(*GEngine);
 		UIRegistry.DrawToolbar(EEditorUIRegion::ToolbarPrimary, Ctx);
 	}
 	ImGui::PopStyleVar();
@@ -1367,9 +1367,9 @@ void FEditorLayer::DrawToolbarSecondary()
 	const float BtnH = ImGui::GetContentRegionAvail().y;
 	ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
 	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.0f, 0.0f));
-	if (GApp)
+	if (GEngine)
 	{
-		FEditorUIDrawContext Ctx = MakeUIDrawContext(*GApp);
+		FEditorUIDrawContext Ctx = MakeUIDrawContext(*GEngine);
 		Ctx.ToolbarButtonSize = BtnH;
 		UIRegistry.DrawToolbar(EEditorUIRegion::ToolbarSecondary, Ctx);
 	}
@@ -1436,7 +1436,7 @@ void FEditorLayer::EnsureDefaultDockLayout(std::uint32_t DockspaceId)
 	ImGui::DockBuilderFinish(DockspaceId);
 }
 
-void FEditorLayer::DrawDockSpace(FAppBase& App)
+void FEditorLayer::DrawDockSpace(FEngineBase& App)
 {
 	ImGuiViewport* Viewport = ImGui::GetMainViewport();
 	ImGui::SetNextWindowPos(Viewport->WorkPos);
@@ -1627,9 +1627,9 @@ void FEditorLayer::DrawMainViewportPanel()
 	FImGuiTextureHandle GameViewTex;
 	std::uint32_t GameViewW = 0;
 	std::uint32_t GameViewH = 0;
-	if (GApp)
+	if (GEngine)
 	{
-		if (FRenderSystem* Render = GApp->GetExtension<FRenderSystem>())
+		if (FRenderSystem* Render = GEngine->GetExtension<FRenderSystem>())
 		{
 			GameViewTex = Render->GetGameViewImGuiTexture();
 			GameViewW = Render->GetGameViewWidth();
@@ -1678,14 +1678,14 @@ void FEditorLayer::DrawMainViewportPanel()
 	ImGui::Dummy(Canvas);
 
 	// Accept asset drop from Content Browser → spawn entity in world
-	if (ImGui::BeginDragDropTarget() && GApp)
+	if (ImGui::BeginDragDropTarget() && GEngine)
 	{
 		if (const ImGuiPayload* Payload = ImGui::AcceptDragDropPayload("ASSET_PATH"))
 		{
 			const char* CatalogKey = static_cast<const char*>(Payload->Data);
 			if (CatalogKey && CatalogKey[0] != '\0')
 			{
-				if (FGameWorldLayer* WL = GApp->GetExtension<FGameWorldLayer>())
+				if (FGameWorldLayer* WL = GEngine->GetExtension<FGameWorldLayer>())
 				{
 					FWorld& World = WL->GetWorld();
 					FEntityManager& Mgr = World.GetEntityManager();
@@ -1710,9 +1710,9 @@ void FEditorLayer::DrawMainViewportPanel()
 		}
 		ImGui::EndDragDropTarget();
 	}
-	if (GApp)
+	if (GEngine)
 	{
-		FEditorUIDrawContext Ctx = MakeUIDrawContext(*GApp);
+		FEditorUIDrawContext Ctx = MakeUIDrawContext(*GEngine);
 		UIRegistry.DrawViewportOverlays(Ctx);
 	}
 	ImGui::End();
@@ -1726,14 +1726,14 @@ void FEditorLayer::DrawSceneOutliner()
 		return;
 	}
 
-	if (!GApp)
+	if (!GEngine)
 	{
 		ImGui::TextDisabled("App not ready.");
 		ImGui::End();
 		return;
 	}
 
-	FGameWorldLayer* WorldLayer = GApp->GetExtension<FGameWorldLayer>();
+	FGameWorldLayer* WorldLayer = GEngine->GetExtension<FGameWorldLayer>();
 	if (!WorldLayer)
 	{
 		ImGui::TextDisabled("No WorldLayer loaded.");
@@ -1796,14 +1796,14 @@ void FEditorLayer::DrawInspectorPanel()
 		return;
 	}
 
-	if (!GApp)
+	if (!GEngine)
 	{
 		ImGui::TextDisabled("App not ready.");
 		ImGui::End();
 		return;
 	}
 
-	FGameWorldLayer* WorldLayer = GApp->GetExtension<FGameWorldLayer>();
+	FGameWorldLayer* WorldLayer = GEngine->GetExtension<FGameWorldLayer>();
 	if (!WorldLayer)
 	{
 		ImGui::TextDisabled("No WorldLayer loaded.");
@@ -2099,9 +2099,9 @@ void FEditorLayer::DrawWallpaperPanel()
 	{
 		ImGui::TextWrapped("%s", WallpaperSourcePath.c_str());
 	}
-	if (ImGui::Button("Clear Wallpaper") && GApp)
+	if (ImGui::Button("Clear Wallpaper") && GEngine)
 	{
-		ClearWallpaper(*GApp);
+		ClearWallpaper(*GEngine);
 	}
 
 	ImGui::Separator();
@@ -2146,7 +2146,7 @@ void FEditorLayer::DrawWallpaperPanel()
 	ImGui::End();
 }
 
-void FEditorLayer::ClearWallpaper(FAppBase& App)
+void FEditorLayer::ClearWallpaper(FEngineBase& App)
 {
 	WallpaperSourcePath.clear();
 	bWallpaperDropRectValid = false;
@@ -2214,7 +2214,7 @@ std::string FEditorLayer::ResolveDefaultWallpaperPath()
 	return {};
 }
 
-void FEditorLayer::EnsureDefaultWallpaper(FAppBase& App)
+void FEditorLayer::EnsureDefaultWallpaper(FEngineBase& App)
 {
 	if (bDefaultWallpaperAttempted || WallpaperTexture.IsValid())
 	{
@@ -2232,7 +2232,7 @@ void FEditorLayer::EnsureDefaultWallpaper(FAppBase& App)
 	TryApplyWallpaperFromPath(App, Path);
 }
 
-bool FEditorLayer::TryApplyWallpaperFromPath(FAppBase& App, const std::string& Path)
+bool FEditorLayer::TryApplyWallpaperFromPath(FEngineBase& App, const std::string& Path)
 {
 	const std::string Ext = TextureImageCodec::GetExtensionLower(Path);
 	if (!TextureImageCodec::IsRasterExtension(Ext) && !TextureImageCodec::IsKtx2Extension(Ext))
@@ -2311,7 +2311,7 @@ bool FEditorLayer::TryApplyWallpaperFromPath(FAppBase& App, const std::string& P
 	return true;
 }
 
-void FEditorLayer::ProcessEditorFileDrops(FAppBase& App)
+void FEditorLayer::ProcessEditorFileDrops(FEngineBase& App)
 {
 	FPlatformSystem* Platform = App.GetExtension<FPlatformSystem>();
 	if (!Platform || !Platform->GetWindow())
@@ -3549,7 +3549,7 @@ void FEditorLayer::OpenResourceBrowser(const std::string& CatalogKey)
 	ResourceBrowserFocusKey = CatalogKey;
 }
 
-void FEditorLayer::ReleaseResourceBrowserPreview(FResourceBrowserWindow& Window, FAppBase& App)
+void FEditorLayer::ReleaseResourceBrowserPreview(FResourceBrowserWindow& Window, FEngineBase& App)
 {
 	if (!Window.PreviewTexture.IsValid())
 	{
@@ -3566,7 +3566,7 @@ void FEditorLayer::ReleaseResourceBrowserPreview(FResourceBrowserWindow& Window,
 	Window.PreviewGeneration = 0;
 }
 
-void FEditorLayer::DrawOpenResourceBrowsers(FAppBase& App)
+void FEditorLayer::DrawOpenResourceBrowsers(FEngineBase& App)
 {
 	if (OpenResourceBrowsers.empty())
 	{
@@ -3687,7 +3687,7 @@ void FEditorLayer::DrawOpenResourceBrowsers(FAppBase& App)
 	}
 }
 
-void FEditorLayer::DrawResourceBrowserBody(FResourceBrowserWindow& Window, FResource& Resource, FAppBase& App)
+void FEditorLayer::DrawResourceBrowserBody(FResourceBrowserWindow& Window, FResource& Resource, FEngineBase& App)
 {
 	const EResourceType Type = Resource.GetType();
 	if (Type == EResourceType::Texture2D
@@ -3855,7 +3855,7 @@ void FEditorLayer::DrawResourceBrowserBody(FResourceBrowserWindow& Window, FReso
 	ImGui::TextDisabled("No specialized browser for this type yet.");
 }
 
-void FEditorLayer::DrawOutputPanel(FAppBase& App)
+void FEditorLayer::DrawOutputPanel(FEngineBase& App)
 {
 	ImGuiWindowClass OutputClass;
 	OutputClass.DockNodeFlagsOverrideSet = static_cast<ImGuiDockNodeFlags>(
@@ -4025,7 +4025,7 @@ void FEditorLayer::EnsureSequenceGraphNodeLayout(const std::vector<IEngineExtens
 	bSequenceGraphLayoutApplied = true;
 }
 
-void FEditorLayer::DrawSequenceGraphPanel(FAppBase& App)
+void FEditorLayer::DrawSequenceGraphPanel(FEngineBase& App)
 {
 	if (!BeginEditorDockPanel(kWinSequenceGraph, &bShowSequenceGraphPanel))
 	{
@@ -4055,7 +4055,7 @@ void FEditorLayer::DrawSequenceGraphPanel(FAppBase& App)
 		bSequenceGraphLayoutApplied = false;
 	}
 	ImGui::SameLine();
-	if (ImGui::RadioButton("FAppBase::Run lifecycle", SequenceGraphViewMode == 1))
+	if (ImGui::RadioButton("FEngineBase::Run lifecycle", SequenceGraphViewMode == 1))
 	{
 		SequenceGraphViewMode = 1;
 		bSequenceGraphLayoutApplied = false;
@@ -4490,7 +4490,7 @@ void FEditorLayer::SendAgentMessage(std::string Text)
 	AgentChat->SendUserMessage(std::move(Text));
 }
 
-void FEditorLayer::DrainEngineLogs(FAppBase& App)
+void FEditorLayer::DrainEngineLogs(FEngineBase& App)
 {
 	std::vector<FCapturedLogLine> Captured;
 	App.GetLog().DrainCapturedLines(Captured);
@@ -4500,7 +4500,7 @@ void FEditorLayer::DrainEngineLogs(FAppBase& App)
 	}
 }
 
-void FEditorLayer::ExecuteConsoleLine(FAppBase& App, const std::string& RawLine)
+void FEditorLayer::ExecuteConsoleLine(FEngineBase& App, const std::string& RawLine)
 {
 	const std::string Line = TrimAscii(RawLine);
 	if (Line.empty())
@@ -4572,7 +4572,7 @@ void FEditorLayer::ExecuteConsoleLine(FAppBase& App, const std::string& RawLine)
 }
 
 
-FEditorUIRegistry* TryGetEditorUIRegistry(FAppBase& App)
+FEditorUIRegistry* TryGetEditorUIRegistry(FEngineBase& App)
 {
 	FEditorLayer* Editor = App.GetExtension<FEditorLayer>();
 	if (!Editor)

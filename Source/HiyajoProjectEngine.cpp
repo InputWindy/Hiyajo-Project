@@ -11,7 +11,7 @@
 
 #include <memory>
 
-class FHiyajoProjectApp : public Maho::FGameApp
+class FHiyajoProjectEngine : public Maho::FGameEngine
 {
 protected:
 	virtual void Configure(Maho::FConfig& OutConfig) override
@@ -36,7 +36,7 @@ protected:
 
 	virtual bool PreInitialize() override
 	{
-		if (!Maho::FGameApp::PreInitialize())
+		if (!Maho::FGameEngine::PreInitialize())
 		{
 			return false;
 		}
@@ -66,7 +66,7 @@ protected:
 	}
 };
 
-Maho::FAppBase* Maho::CreateApplication()
+Maho::FEngineBase* Maho::CreateEngine()
 {
-	return new FHiyajoProjectApp();
+	return new FHiyajoProjectEngine();
 }

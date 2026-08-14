@@ -3,7 +3,7 @@
 #define SOL_ALL_SAFETIES_ON 1
 #include <sol/sol.hpp>
 
-#include <Core/App.h>
+#include <Core/EngineBase.h>
 #include <Core/Extension/Script/ScriptSystem.h>
 #include <Core/Extension/World/ECS/EntityHandle.h>
 #include <Core/Extension/World/ECS/Query.h>
@@ -90,7 +90,7 @@ void FScriptDispatchSystem::DispatchStage(FWorld& InWorld, float DeltaTime, cons
 	// Lazy: bind Lua + component bindings once the Script extension is ready.
 	if (!Impl->Lua)
 	{
-		FScriptSystem* Script = GApp ? GApp->GetExtension<FScriptSystem>() : nullptr;
+		FScriptSystem* Script = GEngine ? GEngine->GetExtension<FScriptSystem>() : nullptr;
 		if (!Script || !Script->IsLuaInitialized() || !Script->TryGetLuaState())
 		{
 			return;

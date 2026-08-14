@@ -1,7 +1,7 @@
 #include "Render/Forward/ForwardRendererFeature.h"
 #include "Render/MahoCommonUniforms.h"
 
-#include <Core/App.h>
+#include <Core/EngineBase.h>
 #include <Core/Engine/Engine.h>
 #include <Core/Misc/Log.h>
 #include <Core/Misc/Utf8Path.h>
@@ -266,9 +266,9 @@ bool FForwardRendererFeature::EnsureShaderReady()
 {
 	auto& S = *Ptr;
 	if (S.bShaderReady) return true;
-	if (!S.RHI || !GApp)
+	if (!S.RHI || !GEngine)
 	{
-		DebugLog("ForwardRenderer: EnsureShaderReady early-out (no RHI/GApp)");
+		DebugLog("ForwardRenderer: EnsureShaderReady early-out (no RHI/GEngine)");
 		return false;
 	}
 	DebugLog("ForwardRenderer: EnsureShaderReady compiling shaders...");
@@ -281,7 +281,7 @@ bool FForwardRendererFeature::EnsureShaderReady()
 
 	DestroyShaderResources();
 
-	const FConfig& Config = GApp->GetConfig();
+	const FConfig& Config = GEngine->GetConfig();
 
 	// ── Compile vertex shader ──
 	const std::string VertSrc = LoadTextFile(Config.ProjectShadersDir + "/Forward/Forward.vert");
