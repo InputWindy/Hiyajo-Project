@@ -1693,7 +1693,7 @@ void FEditorLayer::DrawMainViewportPanel()
 			const char* CatalogKey = static_cast<const char*>(Payload->Data);
 			if (CatalogKey && CatalogKey[0] != '\0')
 			{
-				if (GameWorldLayer* WL = GApp->GetExtension<GameWorldLayer>())
+				if (FGameWorldLayer* WL = GApp->GetExtension<FGameWorldLayer>())
 				{
 					FWorld& World = WL->GetWorld();
 					FEntityManager& Mgr = World.GetEntityManager();
@@ -1741,7 +1741,7 @@ void FEditorLayer::DrawSceneOutliner()
 		return;
 	}
 
-	GameWorldLayer* WorldLayer = GApp->GetExtension<GameWorldLayer>();
+	FGameWorldLayer* WorldLayer = GApp->GetExtension<FGameWorldLayer>();
 	if (!WorldLayer)
 	{
 		ImGui::TextDisabled("No WorldLayer loaded.");
@@ -1811,7 +1811,7 @@ void FEditorLayer::DrawInspectorPanel()
 		return;
 	}
 
-	GameWorldLayer* WorldLayer = GApp->GetExtension<GameWorldLayer>();
+	FGameWorldLayer* WorldLayer = GApp->GetExtension<FGameWorldLayer>();
 	if (!WorldLayer)
 	{
 		ImGui::TextDisabled("No WorldLayer loaded.");

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Game/Components/ComponentCommon.h"
+
 #include <cstdint>
 #include <cstring>
 #include <type_traits>
@@ -7,8 +9,6 @@
 namespace Maho
 {
 
-constexpr std::size_t ECSComponentAssetPathMax = 256;
-constexpr std::size_t ECSComponentNameMax = 64;
 constexpr std::size_t ECSMaxScriptParams = 16;
 
 struct FScriptParam

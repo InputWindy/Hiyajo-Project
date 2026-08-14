@@ -8,10 +8,10 @@
  * Project world layer: registers game systems and spawns initial entities
  * on top of the engine FWorldLayer lifecycle.
  */
-class GameWorldLayer : public Maho::FWorldLayer
+class FGameWorldLayer : public Maho::FWorldLayer
 {
 public:
-	explicit GameWorldLayer(std::string WorldName = "MainWorld");
+	explicit FGameWorldLayer(std::string WorldName = "MainWorld");
 
 protected:
 	void RegisterSystems(Maho::FSystemGroup& SimGroup) override;

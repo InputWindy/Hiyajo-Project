@@ -1,7 +1,7 @@
 #include <Maho.h>
 #include <EntryPoint.h>
 
-#include "Game/GameWorldLayer.h"
+#include "Game/FGameWorldLayer.h"
 #include "Render/Forward/ForwardRendererFeature.h"
 #include "Resource/ResourceFactories.h"
 
@@ -37,7 +37,7 @@ protected:
 		RegisterExtension<Maho::FRenderSystem>(EExtensionPriority::System);
 		RegisterExtension<Maho::FResourceSystem>(EExtensionPriority::System);
 		RegisterExtension<Maho::FScriptSystem>(EExtensionPriority::Overlay);
-		RegisterExtension<GameWorldLayer>(EExtensionPriority::Layer);
+		RegisterExtension<FGameWorldLayer>(EExtensionPriority::Layer);
 
 #if defined(GAME_WITH_EDITOR) && defined(MAHO_WITH_IMGUI)
 		RegisterExtension<Maho::FEditorLayer>(EExtensionPriority::Overlay);

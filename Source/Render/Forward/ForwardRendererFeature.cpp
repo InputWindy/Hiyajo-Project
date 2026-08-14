@@ -8,11 +8,10 @@
 #include <Core/Extension/World/ECS/World.h>
 #include <Core/Extension/World/ECS/Query.h>
 #include "Game/Components/TransformComponent.h"
+#include "Game/Components/CameraComponent.h"
 #include <Render/RDG/RDGBuilder.h>
 #include <Render/RenderSystem.h>
 #include <Render/Shader/ShaderCompiler.h>
-
-#include "Game/Components/AllComponents.h"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>

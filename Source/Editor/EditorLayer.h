@@ -6,8 +6,14 @@
 #include <Core/Extension/World/ECS/SystemGroup.h>
 #include <Core/Extension/World/ECS/EntityManager.h>
 #include <Core/Extension/World/ECS/EntityHandle.h>
-#include "Game/GameWorldLayer.h"
-#include "Game/Components/AllComponents.h"
+#include "Game/FGameWorldLayer.h"
+#include "Game/Components/StaticMeshComponent.h"
+#include "Game/Components/SkeletonComponent.h"
+#include "Game/Components/AnimationComponent.h"
+#include "Game/Components/CameraComponent.h"
+#include "Game/Components/MaterialComponent.h"
+#include "Game/Components/ScriptComponent.h"
+#include "Game/Components/MainCameraTag.h"
 #include "Game/Components/TransformComponent.h"
 #include <Core/Sequencer/EngineExtension.h>
 #include <Core/System/Log.h>

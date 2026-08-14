@@ -65,8 +65,15 @@ Hiyajo-Project/
 │   │   │   ├── EditorUIRegistry.h/cpp#  Panel registration
 │   │   │   └── AgentChatClient.h/cpp#   AI agent chat panel
 │   │   ├── Script/
-│   │   └── Components/
-│   │       └── AllComponents.h      #   ECS component master include
+│   │   └── Components/              # One header per ECS component
+│   │       ├── TransformComponent.h
+│   │       ├── CameraComponent.h
+│   │       ├── StaticMeshComponent.h
+│   │       ├── SkeletonComponent.h
+│   │       ├── AnimationComponent.h
+│   │       ├── MaterialComponent.h
+│   │       ├── ScriptComponent.h
+│   │       └── MainCameraTag.h
 │   └── Render/                      # Custom render pipeline
 │       ├── Forward/                 #   GPU-driven forward renderer
 │       ├── MahoCommonUniforms.h      #   Frame/Object uniform structs (std140)
@@ -134,7 +141,7 @@ virtual bool PreInitialize() override
     RegisterExtension<Maho::FRenderSystem>(EExtensionPriority::System);
     RegisterExtension<Maho::FGCSystem>(EExtensionPriority::System);       // ← Scanned
     RegisterExtension<Maho::FResourceSystem>(EExtensionPriority::System); // ← Scanned
-    RegisterExtension<GameWorldLayer>(EExtensionPriority::Layer);            // ← Scanned
+    RegisterExtension<FGameWorldLayer>(EExtensionPriority::Layer);            // ← Scanned
     RegisterExtension<Maho::FScriptSystem>(EExtensionPriority::Overlay);
     RegisterExtension<Maho::FEditorLayer>(EExtensionPriority::Overlay);
     return true;
@@ -148,7 +155,7 @@ virtual bool PostInitialize() override
 ```
 
 **To add a new feature:**
-1. Create `Source/Game/Systems/MySystem.h` — an `ISystem`, register in `GameWorldLayer::RegisterSystems`
+1. Create `Source/Game/Systems/MySystem.h` — an `ISystem`, register in `FGameWorldLayer::RegisterSystems`
 2. Or create `Source/Render/MyPassFeature.h` — auto-registered as RenderFeature
 3. Rebuild — that's it.
 

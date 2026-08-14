@@ -3,7 +3,7 @@
 #include <Core/Extension/World/ECS/World.h>
 #include <Core/Extension/World/ECS/Query.h>
 #include "Game/Components/TransformComponent.h"
-#include "Game/Components/AllComponents.h"
+#include "Game/Components/CameraComponent.h"
 
 void FMovementSystem::OnUpdate(float DeltaTime, Maho::FWorld& World)
 {

@@ -10,9 +10,8 @@
 #include <Core/Extension/World/ECS/World.h>
 #include <Core/System/Log.h>
 
-#include "Game/Components/AllComponents.h"
+#include "Game/Components/ScriptComponent.h"
 #include "Game/Components/TransformComponent.h"
-#include "Script/LuaComponentBindings.h"
 
 #include <filesystem>
 #include <unordered_map>
@@ -83,7 +82,6 @@ void FScriptDispatchSystem::DispatchStage(FWorld& World, float DeltaTime, const 
 		}
 		Impl->ScriptsDirectory = Script->GetScriptsDirectory();
 		Impl->Lua = static_cast<sol::state*>(Script->TryGetLuaState());
-		RegisterLuaComponentBindings(*Impl->Lua);
 	}
 
 	sol::state& Lua = *Impl->Lua;

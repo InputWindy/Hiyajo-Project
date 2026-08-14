@@ -1,8 +1,9 @@
-#include "Game/GameWorldLayer.h"
+#include "Game/FGameWorldLayer.h"
 
 #include <Core/Extension/World/ECS/EntityHandle.h>
 
-#include "Game/Components/AllComponents.h"
+#include "Game/Components/CameraComponent.h"
+#include "Game/Components/MainCameraTag.h"
 #include "Game/Components/TransformComponent.h"
 #include "Game/Systems/MovementSystem.h"
 #include "Game/Systems/CameraSystem.h"
@@ -12,19 +13,19 @@
 
 #include <utility>
 
-GameWorldLayer::GameWorldLayer(std::string WorldName)
+FGameWorldLayer::FGameWorldLayer(std::string WorldName)
 	: Maho::FWorldLayer(std::move(WorldName))
 {
 }
 
-void GameWorldLayer::RegisterSystems(Maho::FSystemGroup& SimGroup)
+void FGameWorldLayer::RegisterSystems(Maho::FSystemGroup& SimGroup)
 {
 	SimGroup.AddSystem<FMovementSystem>();
 	SimGroup.AddSystem<FCameraSystem>();
 	SimGroup.AddSystem<Maho::FScriptDispatchSystem>();
 }
 
-void GameWorldLayer::SpawnInitialEntities(Maho::FWorld& World)
+void FGameWorldLayer::SpawnInitialEntities(Maho::FWorld& World)
 {
 	// Unit cube at world origin (ForwardRenderer draws a cube per instance).
 	{
