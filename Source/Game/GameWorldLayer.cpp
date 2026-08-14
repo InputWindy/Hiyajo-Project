@@ -1,42 +1,16 @@
 #include "Game/GameWorldLayer.h"
 
-#include <Core/Application/App.h>
-#include <Core/Extension/Script/ScriptSystem.h>
 #include <Core/Extension/World/ECS/EntityHandle.h>
-#include <Core/Extension/World/ECS/Query.h>
-#include <Core/Extension/World/ECS/SystemGroup.h>
 
 #include "Game/Components/AllComponents.h"
 #include "Game/Components/TransformComponent.h"
 #include "Game/Systems/MovementSystem.h"
 #include "Game/Systems/CameraSystem.h"
-#include "Script/EntityScriptDispatcher.h"
+#include "Game/Systems/ScriptDispatchSystem.h"
 
 #include <glm/glm.hpp>
 
 #include <utility>
-
-namespace
-{
-
-/** EEngineStage → per-entity script hook name (nullptr = no hook for this stage). */
-[[nodiscard]] const char* GetScriptHookForStage(Maho::EEngineStage Stage)
-{
-	switch (Stage)
-	{
-	case Maho::EEngineStage::BeginFrame: return "OnBeginFrame";
-	case Maho::EEngineStage::ProcessInput: return "OnProcessInput";
-	case Maho::EEngineStage::FixedUpdate: return "OnFixedUpdate";
-	case Maho::EEngineStage::Update: return "OnUpdate";
-	case Maho::EEngineStage::LateUpdate: return "OnLateUpdate";
-	case Maho::EEngineStage::EndFrame: return "OnEndFrame";
-	case Maho::EEngineStage::PreRender: return "OnPreRender";
-	case Maho::EEngineStage::PostRender: return "OnPostRender";
-	default: return nullptr;
-	}
-}
-
-} // namespace
 
 GameWorldLayer::GameWorldLayer(std::string WorldName)
 	: Maho::FWorldLayer(std::move(WorldName))
@@ -47,6 +21,7 @@ void GameWorldLayer::RegisterSystems(Maho::FSystemGroup& SimGroup)
 {
 	SimGroup.AddSystem<FMovementSystem>();
 	SimGroup.AddSystem<FCameraSystem>();
+	SimGroup.AddSystem<Maho::FScriptDispatchSystem>();
 }
 
 void GameWorldLayer::SpawnInitialEntities(Maho::FWorld& World)
@@ -85,36 +60,3 @@ void GameWorldLayer::SpawnInitialEntities(Maho::FWorld& World)
 	}
 }
 
-void GameWorldLayer::OnStageDispatched(Maho::EEngineStage Stage, float DeltaTime)
-{
-	const char* Hook = GetScriptHookForStage(Stage);
-	if (!Hook)
-	{
-		return;
-	}
-
-	Maho::FScriptSystem* Script = Maho::GApp ? Maho::GApp->GetExtension<Maho::FScriptSystem>() : nullptr;
-	if (!Script || !Script->IsLuaInitialized() || !Script->TryGetLuaState())
-	{
-		return;
-	}
-
-	if (!ScriptDispatcher)
-	{
-		ScriptDispatcher = std::make_unique<Maho::FEntityScriptDispatcher>(*Script);
-	}
-
-	auto Query = GetWorld().Query<Maho::FScriptComponent>();
-	Query.ForEach([&](Maho::FEntityHandle Handle, Maho::FScriptComponent& Component)
-	{
-		if (!Component.bEnabled || !Component.IsValid())
-		{
-			return;
-		}
-
-		Maho::FTransformComponent* Transform =
-			GetWorld().GetEntityManager().GetComponent<Maho::FTransformComponent>(Handle);
-
-		ScriptDispatcher->Dispatch(Handle, Component.ScriptPath, Transform, DeltaTime, Hook);
-	});
-}
