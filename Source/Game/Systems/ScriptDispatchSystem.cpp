@@ -55,22 +55,46 @@ FScriptDispatchSystem::FScriptDispatchSystem()
 
 FScriptDispatchSystem::~FScriptDispatchSystem() = default;
 
-void FScriptDispatchSystem::OnCreate(FWorld& World)
+bool FScriptDispatchSystem::ExecuteStage(EEngineStage Stage, float DeltaTime, FWorld& World)
 {
-	(void)World;
-	// Lazily bind Lua in the first DispatchStage (the Script extension may not
-	// be fully initialized yet at Attach).
+	const char* HookName = nullptr;
+
+	switch (Stage)
+	{
+	case EEngineStage::BeginFrame:
+		HookName = "OnBeginFrame";
+		break;
+	case EEngineStage::FixedUpdate:
+		HookName = "OnFixedUpdate";
+		break;
+	case EEngineStage::Update:
+		HookName = "OnUpdate";
+		break;
+	case EEngineStage::LateUpdate:
+		HookName = "OnLateUpdate";
+		break;
+	case EEngineStage::EndFrame:
+		HookName = "OnEndFrame";
+		break;
+	case EEngineStage::PreRender:
+		HookName = "OnPreRender";
+		break;
+	case EEngineStage::PostRender:
+		HookName = "OnPostRender";
+		break;
+	default:
+		return true;
+	}
+
+	if (HookName)
+	{
+		DispatchStage(World, DeltaTime, HookName);
+	}
+
+	return true;
 }
 
-void FScriptDispatchSystem::OnBeginFrame(FWorld& World) { DispatchStage(World, 0.0f, "OnBeginFrame"); }
-void FScriptDispatchSystem::OnFixedUpdate(float DeltaTime, FWorld& World) { DispatchStage(World, DeltaTime, "OnFixedUpdate"); }
-void FScriptDispatchSystem::OnUpdate(float DeltaTime, FWorld& World) { DispatchStage(World, DeltaTime, "OnUpdate"); }
-void FScriptDispatchSystem::OnLateUpdate(float DeltaTime, FWorld& World) { DispatchStage(World, DeltaTime, "OnLateUpdate"); }
-void FScriptDispatchSystem::OnEndFrame(FWorld& World) { DispatchStage(World, 0.0f, "OnEndFrame"); }
-void FScriptDispatchSystem::OnPreRender(FWorld& World) { DispatchStage(World, 0.0f, "OnPreRender"); }
-void FScriptDispatchSystem::OnPostRender(FWorld& World) { DispatchStage(World, 0.0f, "OnPostRender"); }
-
-void FScriptDispatchSystem::DispatchStage(FWorld& World, float DeltaTime, const char* HookName)
+void FScriptDispatchSystem::DispatchStage(FWorld& InWorld, float DeltaTime, const char* HookName)
 {
 	// Lazy: bind Lua + component bindings once the Script extension is ready.
 	if (!Impl->Lua)
@@ -86,7 +110,7 @@ void FScriptDispatchSystem::DispatchStage(FWorld& World, float DeltaTime, const 
 
 	sol::state& Lua = *Impl->Lua;
 
-	auto Query = World.Query<FScriptComponent>();
+	auto Query = InWorld.Query<FScriptComponent>();
 	Query.ForEach([&](FEntityHandle Handle, FScriptComponent& Component)
 	{
 		if (!Component.bEnabled || !Component.IsValid())
@@ -151,7 +175,7 @@ void FScriptDispatchSystem::DispatchStage(FWorld& World, float DeltaTime, const 
 
 		// 3. Mount the transform as a typed usertype pointer (refresh each dispatch).
 		FTransformComponent* Transform =
-			World.GetEntityManager().GetComponent<FTransformComponent>(Handle);
+			InWorld.GetEntityManager().GetComponent<FTransformComponent>(Handle);
 		if (Transform)
 		{
 			Instance["Transform"] = Transform;
