@@ -5,13 +5,13 @@
 #include <Core/Engine/Engine.h>
 #include <Core/Misc/Log.h>
 #include <Core/Misc/Utf8Path.h>
-#include <Core/Extension/World/ECS/World.h>
-#include <Core/Extension/World/ECS/Query.h>
+#include <ECS/World.h>
+#include <ECS/Query.h>
 #include "Game/Components/TransformComponent.h"
 #include "Game/Components/CameraComponent.h"
-#include <Render/RDG/RDGBuilder.h>
-#include <Render/RenderSystem.h>
-#include <Render/Shader/ShaderCompiler.h>
+#include <RDG/RDGBuilder.h>
+#include <RenderSystem.h>
+#include <Shader/ShaderCompiler.h>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>

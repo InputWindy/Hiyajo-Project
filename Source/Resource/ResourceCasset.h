@@ -8,7 +8,7 @@
  * implementation before any package is loaded.
  */
 
-#include <Core/Extension/Resource/ResourceSystem.h>
+#include <ResourceSystem.h>
 
 namespace Maho
 {

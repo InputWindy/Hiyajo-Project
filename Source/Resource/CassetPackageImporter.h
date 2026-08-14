@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Core/Extension/Resource/ResourceIO.h>
+#include <ResourceIO.h>
 
 namespace Maho
 {

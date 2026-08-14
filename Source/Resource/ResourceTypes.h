@@ -6,7 +6,7 @@
  * classes here and registers them with the resource manager via factories.
  */
 
-#include <Core/Extension/Resource/ResourceSystem.h>
+#include <ResourceSystem.h>
 #include "Resource/TextureEnums.h"
 #include "Resource/AnimationKey.h"
 #include <Core/Misc/Archive.h>

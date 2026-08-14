@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Core/Extension/World/ECS/System.h>
+#include <ECS/System.h>
 
 #include <memory>
 

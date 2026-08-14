@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Core/Extension/World/ECS/SystemGroup.h>
+#include <ECS/SystemGroup.h>
 
 /**
  * Project world: the root system group + engine extension. Registers game

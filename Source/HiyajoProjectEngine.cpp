@@ -1,6 +1,10 @@
 #include <Maho.h>
 #include <EntryPoint.h>
 
+#include <Platform.h>
+#include <ResourceSystem.h>
+#include <ScriptSystem.h>
+
 #include "Game/FGameWorldLayer.h"
 #include "Render/Forward/ForwardRendererFeature.h"
 #include "Resource/ResourceFactories.h"

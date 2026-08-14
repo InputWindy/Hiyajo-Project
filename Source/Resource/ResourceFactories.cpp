@@ -3,7 +3,7 @@
 #include "Resource/ResourceCasset.h"
 #include "Resource/ResourceTypes.h"
 
-#include <Core/Extension/Resource/ResourceSystem.h>
+#include <ResourceSystem.h>
 
 namespace Maho
 {

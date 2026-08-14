@@ -97,6 +97,16 @@ if(TARGET assimp)
 		VERBATIM
 	)
 endif()
+# GLFW is built as a DLL when Maho is shared; Platform/Render plugins + Maho.dll share it.
+if(TARGET glfw)
+	add_custom_command(TARGET Hiyajo-Project POST_BUILD
+		COMMAND ${CMAKE_COMMAND} -E copy_if_different
+			"$<TARGET_FILE:glfw>"
+			"$<TARGET_FILE_DIR:Hiyajo-Project>"
+		COMMENT "Copy glfw DLL"
+		VERBATIM
+	)
+endif()
 target_compile_features(Hiyajo-Project PRIVATE cxx_std_20)
 target_compile_definitions(Hiyajo-Project PRIVATE
 	$<$<BOOL:${GAME_WITH_EDITOR}>:GAME_WITH_EDITOR=1>

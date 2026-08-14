@@ -1,8 +1,8 @@
 #include "Game/Systems/MovementSystem.h"
 
 #include <Core/EngineBase.h>
-#include <Core/Extension/World/ECS/World.h>
-#include <Core/Extension/World/ECS/Query.h>
+#include <ECS/World.h>
+#include <ECS/Query.h>
 #include "Game/Components/TransformComponent.h"
 #include "Game/Components/CameraComponent.h"
 

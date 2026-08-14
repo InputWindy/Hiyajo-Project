@@ -1,6 +1,6 @@
 #include "Game/FGameWorldLayer.h"
 
-#include <Core/Extension/World/ECS/EntityHandle.h>
+#include <ECS/EntityHandle.h>
 
 #include "Game/Components/CameraComponent.h"
 #include "Game/Components/MainCameraTag.h"

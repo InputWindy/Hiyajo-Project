@@ -5,15 +5,15 @@
 #include <Core/Misc/Console.h>
 #include "Editor/AgentChatClient.h"
 #include "Editor/EditorUIRegistry.h"
-#include <Core/Extension/Platform/Platform.h>
-#include <Render/RenderSystem.h>
-#include <Core/Extension/Resource/ResourceSystem.h>
+#include <Platform.h>
+#include <RenderSystem.h>
+#include <ResourceSystem.h>
 #include <Core/Misc/Log.h>
 #include <Core/Misc/Paths.h>
 #include <Core/Misc/Utf8Path.h>
-#include <Render/UI/ImGuiExtensions.h>
+#include <UI/ImGuiExtensions.h>
 
-#include <Core/Extension/Resource/ResourceIO.h>
+#include <ResourceIO.h>
 #include "Resource/CassetPackageImporter.h"
 #include "Resource/ResourceTypes.h"
 #include "Resource/ResourceIOTraits.h"

@@ -6,7 +6,7 @@
  * concrete F* asset classes and the CPU codecs.
  */
 
-#include <Core/Extension/Resource/ResourceIO.h>
+#include <ResourceIO.h>
 #include "Resource/ResourceTypes.h"
 
 namespace Maho

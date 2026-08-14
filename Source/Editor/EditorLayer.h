@@ -2,10 +2,10 @@
 
 #include "Editor/AgentChatClient.h"
 #include "Editor/EditorUIRegistry.h"
-#include <Core/Extension/Resource/ResourceSystem.h>
-#include <Core/Extension/World/ECS/SystemGroup.h>
-#include <Core/Extension/World/ECS/EntityManager.h>
-#include <Core/Extension/World/ECS/EntityHandle.h>
+#include <ResourceSystem.h>
+#include <ECS/SystemGroup.h>
+#include <ECS/EntityManager.h>
+#include <ECS/EntityHandle.h>
 #include "Game/FGameWorldLayer.h"
 #include "Game/Components/StaticMeshComponent.h"
 #include "Game/Components/SkeletonComponent.h"
@@ -18,7 +18,7 @@
 #include <Core/Engine/EngineExtension.h>
 #include <Core/Misc/Log.h>
 #include <Core/Engine/EngineStage.h>
-#include <Render/UI/ImGuiSystem.h>
+#include <UI/ImGuiSystem.h>
 
 #include <cstdint>
 #include <deque>

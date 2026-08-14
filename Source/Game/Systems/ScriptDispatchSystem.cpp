@@ -4,10 +4,10 @@
 #include <sol/sol.hpp>
 
 #include <Core/EngineBase.h>
-#include <Core/Extension/Script/ScriptSystem.h>
-#include <Core/Extension/World/ECS/EntityHandle.h>
-#include <Core/Extension/World/ECS/Query.h>
-#include <Core/Extension/World/ECS/World.h>
+#include <ScriptSystem.h>
+#include <ECS/EntityHandle.h>
+#include <ECS/Query.h>
+#include <ECS/World.h>
 #include <Core/Misc/Log.h>
 
 #include "Game/Components/ScriptComponent.h"

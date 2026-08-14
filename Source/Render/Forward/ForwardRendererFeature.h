@@ -1,9 +1,9 @@
 #pragma once
 
-#include <Render/RenderFeature.h>
-#include <Render/RenderPipelineStage.h>
-#include <Render/UI/ImGuiSystem.h>
-#include <Render/Shader/ShaderCompiler.h>
+#include <RenderFeature.h>
+#include <RenderPipelineStage.h>
+#include <UI/ImGuiSystem.h>
+#include <Shader/ShaderCompiler.h>
 
 #include "GPUScene.h"
 #include "ForwardSceneTypes.h"
