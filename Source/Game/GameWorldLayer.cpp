@@ -10,7 +10,7 @@
 #include "Game/Components/TransformComponent.h"
 #include "Game/Systems/MovementSystem.h"
 #include "Game/Systems/CameraSystem.h"
-#include "Script/LuaComponentBindings.h"
+#include "Script/EntityScriptDispatcher.h"
 
 #include <glm/glm.hpp>
 
@@ -18,31 +18,6 @@
 
 namespace
 {
-
-/** Register project Lua bindings once, after FScriptSystem owns a live sol::state. */
-void EnsureLuaBindings()
-{
-	static bool bRegistered = false;
-	if (bRegistered)
-	{
-		return;
-	}
-
-	Maho::FScriptSystem* Script = Maho::GApp ? Maho::GApp->GetExtension<Maho::FScriptSystem>() : nullptr;
-	if (!Script || !Script->IsLuaInitialized())
-	{
-		return;
-	}
-
-	void* LuaState = Script->TryGetLuaState();
-	if (!LuaState)
-	{
-		return;
-	}
-
-	Maho::RegisterLuaComponentBindings(*static_cast<sol::state*>(LuaState));
-	bRegistered = true;
-}
 
 /** EEngineStage → per-entity script hook name (nullptr = no hook for this stage). */
 [[nodiscard]] const char* GetScriptHookForStage(Maho::EEngineStage Stage)
@@ -112,8 +87,6 @@ void GameWorldLayer::SpawnInitialEntities(Maho::FWorld& World)
 
 void GameWorldLayer::OnStageDispatched(Maho::EEngineStage Stage, float DeltaTime)
 {
-	EnsureLuaBindings();
-
 	const char* Hook = GetScriptHookForStage(Stage);
 	if (!Hook)
 	{
@@ -121,9 +94,14 @@ void GameWorldLayer::OnStageDispatched(Maho::EEngineStage Stage, float DeltaTime
 	}
 
 	Maho::FScriptSystem* Script = Maho::GApp ? Maho::GApp->GetExtension<Maho::FScriptSystem>() : nullptr;
-	if (!Script || !Script->IsLuaInitialized())
+	if (!Script || !Script->IsLuaInitialized() || !Script->TryGetLuaState())
 	{
 		return;
+	}
+
+	if (!ScriptDispatcher)
+	{
+		ScriptDispatcher = std::make_unique<Maho::FEntityScriptDispatcher>(*Script);
 	}
 
 	auto Query = GetWorld().Query<Maho::FScriptComponent>();
@@ -137,6 +115,6 @@ void GameWorldLayer::OnStageDispatched(Maho::EEngineStage Stage, float DeltaTime
 		Maho::FTransformComponent* Transform =
 			GetWorld().GetEntityManager().GetComponent<Maho::FTransformComponent>(Handle);
 
-		Script->DispatchEntityScript(Handle, Component.ScriptPath, Transform, DeltaTime, Hook);
+		ScriptDispatcher->Dispatch(Handle, Component.ScriptPath, Transform, DeltaTime, Hook);
 	});
 }
