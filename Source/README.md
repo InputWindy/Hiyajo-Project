@@ -70,8 +70,7 @@ Hiyajo-Project/
 │   └── Render/                      # Custom render pipeline
 │       ├── Forward/                 #   GPU-driven forward renderer
 │       ├── MahoCommonUniforms.h      #   Frame/Object uniform structs (std140)
-│       ├── RenderResourceExporters.cpp   #  TRenderResourceExporter<T> specializations
-│       └── ResourceSnapshotConverters.h/cpp # CPU resource → snapshot conversion
+│       └── ResourceSnapshots.h        #   CPU snapshot structs (project-side)
 ├── Shaders/                         # Project-specific shaders
 │   └── Forward/                     #   Forward renderer shaders (comp/vert/frag)
 ├── Intermediate/

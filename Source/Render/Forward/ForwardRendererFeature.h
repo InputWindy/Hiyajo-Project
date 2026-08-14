@@ -2,11 +2,11 @@
 
 #include <Render/Sequencer/RenderFeature.h>
 #include <Render/RenderPipelineStage.h>
-#include <Render/SceneUpdatePacket.h>
 #include <Render/UI/ImGuiSystem.h>
-#include <Render/ShaderCompiler.h>
+#include <Render/Shader/ShaderCompiler.h>
 
 #include "GPUScene.h"
+#include "ForwardSceneTypes.h"
 
 #include <cstdint>
 #include <memory>

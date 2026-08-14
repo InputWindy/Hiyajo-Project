@@ -10,8 +10,7 @@
 #include <Core/Extension/World/Components/TransformComponent.h>
 #include <Render/RDG/RDGBuilder.h>
 #include <Render/RenderSystem.h>
-#include <Render/SceneUpdatePacket.h>
-#include <Render/ShaderCompiler.h>
+#include <Render/Shader/ShaderCompiler.h>
 
 #include "Game/Components/AllComponents.h"
 

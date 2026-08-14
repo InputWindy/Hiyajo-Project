@@ -14,7 +14,10 @@
 #include <Render/UI/ImGuiExtensions.h>
 
 #include <Core/Extension/Resource/ResourceIO.h>
-#include <Core/Extension/Resource/TextureImageCodec.h>
+#include "Resource/CassetPackageImporter.h"
+#include "Resource/ResourceTypes.h"
+#include "Resource/ResourceIOTraits.h"
+#include "Resource/TextureImageCodec.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -3160,7 +3163,7 @@ void FEditorLayer::TickStartupCassetLoad()
 			Config.SourcePath = Absolute;
 			Config.Mode = EResourceIOMode::Async;
 			std::string Soft;
-			if (Resources->Import<FCassetPackageImporter>(std::move(Config), Soft))
+			if (Resources->Import(std::make_unique<FCassetPackageImporter>(), std::move(Config), Soft))
 			{
 				StartupCassetSoftPaths.push_back(std::move(Soft));
 				++Kicked;

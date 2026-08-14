@@ -3,6 +3,7 @@
 
 #include "Game/GameWorldLayer.h"
 #include "Render/Forward/ForwardRendererFeature.h"
+#include "Resource/ResourceFactories.h"
 
 #if defined(GAME_WITH_EDITOR) && defined(MAHO_WITH_IMGUI)
 #	include "Editor/EditorLayer.h"
@@ -52,6 +53,7 @@ protected:
 		{
 			RenderSystem->RegisterFeature<Maho::FForwardRendererFeature>();
 		}
+		Maho::RegisterResourceFactories();
 		return true;
 	}
 };

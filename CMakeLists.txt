@@ -76,6 +76,10 @@ target_include_directories(Hiyajo-Project PRIVATE
 	"${MAHO_ENGINE_ROOT}/Maho/ThirdParty/nlohmann"
 	"${MAHO_SOL2_INCLUDE_DIR}"
 )
+target_include_directories(Hiyajo-Project PRIVATE
+	$<TARGET_PROPERTY:assimp,SOURCE_DIR>/include
+	$<TARGET_PROPERTY:assimp,BINARY_DIR>/include
+)
 target_link_libraries(Hiyajo-Project PRIVATE Maho::Engine Maho::Modules
 	lua
 	assimp)
@@ -96,6 +100,7 @@ endif()
 target_compile_features(Hiyajo-Project PRIVATE cxx_std_20)
 target_compile_definitions(Hiyajo-Project PRIVATE
 	$<$<BOOL:${GAME_WITH_EDITOR}>:GAME_WITH_EDITOR=1>
+	MAHO_WITH_ASSIMP=1
 )
 
 if(MSVC)
