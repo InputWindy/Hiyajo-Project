@@ -2175,8 +2175,7 @@ std::string FEditorLayer::ResolveDefaultWallpaperPath()
 	std::error_code ErrorCode;
 	const fs::path Candidates[] = {
 		fs::current_path() / "Engine" / "Editor" / kFileName,
-		fs::path(MAHO_ENGINE_ROOT) / "Maho" / "ThirdParty" / "editor" / kFileName,
-		fs::path(MAHO_ENGINE_ROOT) / "ThirdParty" / "editor" / kFileName,
+		fs::path(MAHO_ENGINE_ROOT) / "Maho" / "Content" / "Editor" / kFileName,
 	};
 
 #if defined(_WIN32)

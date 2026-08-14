@@ -15,7 +15,7 @@
 
 #include <memory>
 
-class FHiyajoProjectEngine : public Maho::FGameEngine
+class FHiyajoProjectEngine : public Maho::FGameClientEngine
 {
 protected:
 	virtual void Configure(Maho::FConfig& OutConfig) override
@@ -40,7 +40,7 @@ protected:
 
 	virtual bool PreInitialize() override
 	{
-		if (!Maho::FGameEngine::PreInitialize())
+		if (!Maho::FGameClientEngine::PreInitialize())
 		{
 			return false;
 		}
