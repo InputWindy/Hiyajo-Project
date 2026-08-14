@@ -72,7 +72,6 @@ target_include_directories(Hiyajo-Project PRIVATE
 	"${GAME_SOURCE_DIR}/Game"
 	"${GAME_GENERATED_DIR}"
 	"${MAHO_ENGINE_ROOT}/Maho/Source/Private"
-	"${MAHO_ENGINE_ROOT}/Maho/ThirdParty/VulkanMemoryAllocator/include"
 	"${MAHO_ENGINE_ROOT}/Maho/ThirdParty/nlohmann"
 	"${MAHO_SOL2_INCLUDE_DIR}"
 )
