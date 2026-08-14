@@ -38,19 +38,7 @@ bool ImportTextureCpu(
 	FResourceBulkData& Bulk,
 	TTexture& Resource)
 {
-	const bool bModelPrepared = Bulk.PreparedKind == EResourceBulkPreparedKind::Model
-		&& Bulk.Prepared;
-	const bool bTexturePrepared = Bulk.PreparedKind == EResourceBulkPreparedKind::TextureImage
-		&& Bulk.Prepared;
-
-	if (bTexturePrepared)
-	{
-		const auto* Image = static_cast<const FDecodedImage*>(Bulk.Prepared.get());
-		FDecodedImage Copy = *Image;
-		Resource.SetCpuImage(Copy.Dimension, Copy.Format, Copy.Width, Copy.Height,
-			Copy.Depth, Copy.ArrayLayers, Copy.MipCount, Copy.bSRGB, std::move(Copy.Pixels));
-	}
-	else if (!Bulk.Bytes.empty())
+	if (!Bulk.Bytes.empty())
 	{
 		FDecodedImage Image;
 		if (!TextureImageCodec::DecodeFromMemory(Bulk.Bytes.data(), Bulk.Bytes.size(), Config.SourcePath, Image))

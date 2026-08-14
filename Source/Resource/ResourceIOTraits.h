@@ -12,6 +12,18 @@
 namespace Maho
 {
 
+/**
+ * Prepared bulk-data type tag (project-side). Used when a CPU codec pre-decodes
+ * raw bytes into a typed payload before the importer consumes it. The engine
+ * core stays type-erased (FResourceBulkData carries only raw Bytes).
+ */
+enum class EResourceBulkPreparedType : std::uint8_t
+{
+	None = 0,
+	Model = 1,
+	TextureImage = 2,
+};
+
 template <>
 struct TResourceIOTraits<FTexture2D>
 {
