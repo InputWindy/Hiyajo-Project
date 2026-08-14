@@ -125,10 +125,7 @@ constexpr const char* kModalBusyTitle = "Busy";
 	case EEngineStage::PostInit: return "PostInit";
 	case EEngineStage::Attach: return "Attach";
 	case EEngineStage::BeginFrame: return "BeginFrame";
-	case EEngineStage::ProcessInput: return "ProcessInput";
-	case EEngineStage::FixedUpdate: return "FixedUpdate";
-	case EEngineStage::Update: return "Update";
-	case EEngineStage::LateUpdate: return "LateUpdate";
+	case EEngineStage::Tick: return "Tick";
 	case EEngineStage::EndFrame: return "EndFrame";
 	case EEngineStage::PreRender: return "PreRender";
 	case EEngineStage::Render: return "Render";
@@ -1144,7 +1141,7 @@ bool FEditorLayer::ExecuteStage(EEngineStage Stage)
 #endif
 		return true;
 	}
-	if (Stage != EEngineStage::Update)
+	if (Stage != EEngineStage::Tick)
 	{
 		return true;
 	}

@@ -55,43 +55,34 @@ FScriptDispatchSystem::FScriptDispatchSystem()
 
 FScriptDispatchSystem::~FScriptDispatchSystem() = default;
 
-bool FScriptDispatchSystem::ExecuteStage(EEngineStage Stage, float DeltaTime, FWorld& World)
+void FScriptDispatchSystem::OnBeginFrame(FWorld& World)
 {
-	const char* HookName = nullptr;
+	DispatchStage(World, 0.0f, "OnBeginFrame");
+}
 
-	switch (Stage)
-	{
-	case EEngineStage::BeginFrame:
-		HookName = "OnBeginFrame";
-		break;
-	case EEngineStage::FixedUpdate:
-		HookName = "OnFixedUpdate";
-		break;
-	case EEngineStage::Update:
-		HookName = "OnUpdate";
-		break;
-	case EEngineStage::LateUpdate:
-		HookName = "OnLateUpdate";
-		break;
-	case EEngineStage::EndFrame:
-		HookName = "OnEndFrame";
-		break;
-	case EEngineStage::PreRender:
-		HookName = "OnPreRender";
-		break;
-	case EEngineStage::PostRender:
-		HookName = "OnPostRender";
-		break;
-	default:
-		return true;
-	}
+void FScriptDispatchSystem::OnProcessInput(FWorld& World)
+{
+	DispatchStage(World, 0.0f, "OnProcessInput");
+}
 
-	if (HookName)
-	{
-		DispatchStage(World, DeltaTime, HookName);
-	}
+void FScriptDispatchSystem::OnFixedUpdate(float DeltaTime, FWorld& World)
+{
+	DispatchStage(World, DeltaTime, "OnFixedUpdate");
+}
 
-	return true;
+void FScriptDispatchSystem::OnUpdate(float DeltaTime, FWorld& World)
+{
+	DispatchStage(World, DeltaTime, "OnUpdate");
+}
+
+void FScriptDispatchSystem::OnLateUpdate(float DeltaTime, FWorld& World)
+{
+	DispatchStage(World, DeltaTime, "OnLateUpdate");
+}
+
+void FScriptDispatchSystem::OnEndFrame(FWorld& World)
+{
+	DispatchStage(World, 0.0f, "OnEndFrame");
 }
 
 void FScriptDispatchSystem::DispatchStage(FWorld& InWorld, float DeltaTime, const char* HookName)
