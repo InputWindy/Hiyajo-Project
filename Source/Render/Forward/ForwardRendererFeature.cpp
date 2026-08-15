@@ -51,7 +51,10 @@ static const FGPUCubeVertex TriangleVertices[] =
 static std::string LoadTextFile(const std::string& Path)
 {
 	std::ifstream In(Maho::PathFromUtf8(Path), std::ios::binary);
-	if (!In) return {};
+	if (!In)
+	{
+		return {};
+	}
 	std::ostringstream Ss;
 	Ss << In.rdbuf();
 	return Ss.str();
@@ -61,16 +64,28 @@ static std::string LoadTextFile(const std::string& Path)
 static void ExtractFrustumPlanes(const float ViewProj[16], float OutPlanes[6][4])
 {
 	// ViewProj is column-major (M[col*4+row]).
-	auto Row = [&](int R) { return std::array<float,4>{ ViewProj[R], ViewProj[4+R], ViewProj[8+R], ViewProj[12+R] }; };
-	std::array<float,4> R0 = Row(0), R1 = Row(1), R2 = Row(2), R3 = Row(3);
-	auto Normalize = [](std::array<float,4>& P) {
-		float L = std::sqrt(P[0]*P[0] + P[1]*P[1] + P[2]*P[2]);
-		if (L > 1e-8f) { P[0]/=L; P[1]/=L; P[2]/=L; P[3]/=L; }
+	auto Row = [&](int R)
+	{
+		return std::array<float,4>{ ViewProj[R], ViewProj[4+R], ViewProj[8+R], ViewProj[12+R] };
 	};
-	auto Add = [](const std::array<float,4>& A, const std::array<float,4>& B) {
+	std::array<float,4> R0 = Row(0), R1 = Row(1), R2 = Row(2), R3 = Row(3);
+	auto Normalize = [](std::array<float,4>& P)
+	{
+		float L = std::sqrt(P[0]*P[0] + P[1]*P[1] + P[2]*P[2]);
+		if (L > 1e-8f)
+		{
+			P[0] /= L;
+			P[1] /= L;
+			P[2] /= L;
+			P[3] /= L;
+		}
+	};
+	auto Add = [](const std::array<float,4>& A, const std::array<float,4>& B)
+	{
 		return std::array<float,4>{ A[0]+B[0], A[1]+B[1], A[2]+B[2], A[3]+B[3] };
 	};
-	auto Sub = [](const std::array<float,4>& A, const std::array<float,4>& B) {
+	auto Sub = [](const std::array<float,4>& A, const std::array<float,4>& B)
+	{
 		return std::array<float,4>{ A[0]-B[0], A[1]-B[1], A[2]-B[2], A[3]-B[3] };
 	};
 
@@ -154,7 +169,10 @@ bool FForwardRendererFeature::OnRegister(FRenderSystem& RenderSystem)
 void FForwardRendererFeature::OnUnregister(FRenderSystem& RenderSystem)
 {
 	auto& S = *Ptr;
-	if (!S.bInitialized) return;
+	if (!S.bInitialized)
+	{
+		return;
+	}
 
 	if (S.GameViewImGuiTexture.IsValid())
 	{
@@ -164,19 +182,47 @@ void FForwardRendererFeature::OnUnregister(FRenderSystem& RenderSystem)
 	}
 
 	IRHI* RHI = RenderSystem.GetRHIServer().GetRHI();
-	if (!RHI) { S.bInitialized = false; return; }
+	if (!RHI)
+	{
+		S.bInitialized = false;
+		return;
+	}
 
 	DestroyShaderResources();
 
-	if (S.ViewportTexView)   { RHI->DestroyTextureView(S.ViewportTexView); S.ViewportTexView = nullptr; }
-	if (S.ViewportTex)       { RHI->DestroyTexture(S.ViewportTex); S.ViewportTex = nullptr; }
+	if (S.ViewportTexView)
+	{
+		RHI->DestroyTextureView(S.ViewportTexView);
+		S.ViewportTexView = nullptr;
+	}
+	if (S.ViewportTex)
+	{
+		RHI->DestroyTexture(S.ViewportTex);
+		S.ViewportTex = nullptr;
+	}
 	for (int Slot = 0; Slot < FrameRingSize; ++Slot)
 	{
-		if (S.FrameUniformBuf[Slot])  { RHI->DestroyBuffer(S.FrameUniformBuf[Slot]); S.FrameUniformBuf[Slot] = nullptr; }
-		if (S.ObjectUniformBuf[Slot]) { RHI->DestroyBuffer(S.ObjectUniformBuf[Slot]); S.ObjectUniformBuf[Slot] = nullptr; }
+		if (S.FrameUniformBuf[Slot])
+		{
+			RHI->DestroyBuffer(S.FrameUniformBuf[Slot]);
+			S.FrameUniformBuf[Slot] = nullptr;
+		}
+		if (S.ObjectUniformBuf[Slot])
+		{
+			RHI->DestroyBuffer(S.ObjectUniformBuf[Slot]);
+			S.ObjectUniformBuf[Slot] = nullptr;
+		}
 	}
-	if (S.CubeIBO)           { RHI->DestroyBuffer(S.CubeIBO); S.CubeIBO = nullptr; }
-	if (S.CubeVBO)           { RHI->DestroyBuffer(S.CubeVBO); S.CubeVBO = nullptr; }
+	if (S.CubeIBO)
+	{
+		RHI->DestroyBuffer(S.CubeIBO);
+		S.CubeIBO = nullptr;
+	}
+	if (S.CubeVBO)
+	{
+		RHI->DestroyBuffer(S.CubeVBO);
+		S.CubeVBO = nullptr;
+	}
 
 	S.bInitialized = false;
 }
@@ -199,11 +245,17 @@ void FForwardRendererFeature::BuildCubeGeometry()
 bool FForwardRendererFeature::SetupPersistentResources(FRenderSystem& RenderSystem)
 {
 	auto& S = *Ptr;
-	if (S.bInitialized) return true;
+	if (S.bInitialized)
+	{
+		return true;
+	}
 
 	S.RHI = RenderSystem.GetRHIServer().GetRHI();
 	S.RenderSystem = &RenderSystem;
-	if (!S.RHI) return false;
+	if (!S.RHI)
+	{
+		return false;
+	}
 
 	BuildCubeGeometry();
 
@@ -265,7 +317,10 @@ bool FForwardRendererFeature::SetupPersistentResources(FRenderSystem& RenderSyst
 bool FForwardRendererFeature::EnsureShaderReady()
 {
 	auto& S = *Ptr;
-	if (S.bShaderReady) return true;
+	if (S.bShaderReady)
+	{
+		return true;
+	}
 	if (!S.RHI || !GEngine)
 	{
 		DebugLog("ForwardRenderer: EnsureShaderReady early-out (no RHI/GEngine)");
@@ -419,16 +474,31 @@ void FForwardRendererFeature::DestroyShaderResources()
 {
 	auto& S = *Ptr;
 	IRHI* RHI = S.RHI;
-	if (!RHI) return;
+	if (!RHI)
+	{
+		return;
+	}
 
-	if (S.DescPool)      { RHI->DestroyDescriptorPool(S.DescPool); S.DescPool = nullptr; }
+	if (S.DescPool)
+	{
+		RHI->DestroyDescriptorPool(S.DescPool);
+		S.DescPool = nullptr;
+	}
 	for (int Slot = 0; Slot < FrameRingSize; ++Slot)
 	{
 		S.DrawDescSet[Slot] = nullptr;
 		S.FrameDescSet[Slot] = nullptr;
 	}
-	if (S.DrawPipeline)  { RHI->DestroyGraphicsPipeline(S.DrawPipeline); S.DrawPipeline = nullptr; }
-	if (S.DrawLayout)    { RHI->DestroyPipelineLayout(S.DrawLayout); S.DrawLayout = nullptr; }
+	if (S.DrawPipeline)
+	{
+		RHI->DestroyGraphicsPipeline(S.DrawPipeline);
+		S.DrawPipeline = nullptr;
+	}
+	if (S.DrawLayout)
+	{
+		RHI->DestroyPipelineLayout(S.DrawLayout);
+		S.DrawLayout = nullptr;
+	}
 	S.bShaderReady = false;
 }
 
@@ -458,7 +528,10 @@ void FForwardRendererFeature::ComputeFrustumPlanes(const FCameraFrameData& Camer
 
 void FForwardRendererFeature::ExecuteStage(ERenderPipelineStage Stage, const FForwardDrawContext& Context, FFrameContext& FrameCtx, FRDGBuilder& GB)
 {
-	if (!Ptr->bInitialized) return;
+	if (!Ptr->bInitialized)
+	{
+		return;
+	}
 
 	switch (Stage)
 	{
@@ -471,13 +544,22 @@ void FForwardRendererFeature::ExecuteStage(ERenderPipelineStage Stage, const FFo
 void FForwardRendererFeature::ExecuteBeginFrame(const FForwardDrawContext& Context, FFrameContext& FrameCtx, FRDGBuilder& GB)
 {
 	auto& S = *Ptr;
-	if (!S.RenderSystem) return;
-	if (!EnsureShaderReady()) return;
+	if (!S.RenderSystem)
+	{
+		return;
+	}
+	if (!EnsureShaderReady())
+	{
+		return;
+	}
 
 	const std::uint32_t Slot = static_cast<std::uint32_t>(FrameCtx.FrameIndex % FrameRingSize);
 
 	const auto& Scene = Context;
-	if (Scene.Draws.empty()) return;
+	if (Scene.Draws.empty())
+	{
+		return;
+	}
 
 	// ── Frame uniforms ──
 	FFrameUniforms FrameUni{};
@@ -505,8 +587,14 @@ void FForwardRendererFeature::ExecuteBeginFrame(const FForwardDrawContext& Conte
 void FForwardRendererFeature::ExecuteBasePass(const FForwardDrawContext& Context, FFrameContext& FrameCtx, FRDGBuilder& GB)
 {
 	auto& S = *Ptr;
-	if (!S.RenderSystem) return;
-	if (!EnsureShaderReady()) return;
+	if (!S.RenderSystem)
+	{
+		return;
+	}
+	if (!EnsureShaderReady())
+	{
+		return;
+	}
 
 	const std::uint32_t Slot = static_cast<std::uint32_t>(FrameCtx.FrameIndex % FrameRingSize);
 

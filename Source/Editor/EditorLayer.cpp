@@ -1694,7 +1694,10 @@ void FEditorLayer::DrawMainViewportPanel()
 					FEntityHandle NewEntity = Mgr.CreateEntity(Mask);
 
 					FTransformComponent* T = Mgr.GetComponent<FTransformComponent>(NewEntity);
-					if (T) T->SetIdentity();
+											if (T)
+						{
+							T->SetIdentity();
+						}
 
 					FStaticMeshComponent* SM = Mgr.GetComponent<FStaticMeshComponent>(NewEntity);
 					if (SM)
@@ -1916,8 +1919,11 @@ void FEditorLayer::DrawInspectorPanel()
 				{
 					if (const ImGuiPayload* Payload = ImGui::AcceptDragDropPayload("ASSET_PATH"))
 					{
-						const char* Path = static_cast<const char*>(Payload->Data);
-						if (Path) std::strncpy(C->MeshPath, Path, ECSComponentAssetPathMax - 1);
+							const char* Path = static_cast<const char*>(Payload->Data);
+							if (Path)
+							{
+								std::strncpy(C->MeshPath, Path, ECSComponentAssetPathMax - 1);
+							}
 					}
 					ImGui::EndDragDropTarget();
 				}
@@ -1940,8 +1946,11 @@ void FEditorLayer::DrawInspectorPanel()
 				{
 					if (const ImGuiPayload* Payload = ImGui::AcceptDragDropPayload("ASSET_PATH"))
 					{
-						const char* Path = static_cast<const char*>(Payload->Data);
-						if (Path) std::strncpy(C->SkeletonPath, Path, ECSComponentAssetPathMax - 1);
+							const char* Path = static_cast<const char*>(Payload->Data);
+							if (Path)
+							{
+								std::strncpy(C->SkeletonPath, Path, ECSComponentAssetPathMax - 1);
+							}
 					}
 					ImGui::EndDragDropTarget();
 				}
@@ -1968,8 +1977,11 @@ void FEditorLayer::DrawInspectorPanel()
 				{
 					if (const ImGuiPayload* Payload = ImGui::AcceptDragDropPayload("ASSET_PATH"))
 					{
-						const char* Path = static_cast<const char*>(Payload->Data);
-						if (Path) std::strncpy(C->AnimationClipPath, Path, ECSComponentAssetPathMax - 1);
+							const char* Path = static_cast<const char*>(Payload->Data);
+							if (Path)
+							{
+								std::strncpy(C->AnimationClipPath, Path, ECSComponentAssetPathMax - 1);
+							}
 					}
 					ImGui::EndDragDropTarget();
 				}
@@ -1992,8 +2004,10 @@ void FEditorLayer::DrawInspectorPanel()
 				ImGui::DragFloat("Far Plane", &C->FarPlane, 1.0f, C->NearPlane + 0.01f, 10000.0f);
 				ImGui::Checkbox("Main Camera", &C->bMainCamera);
 				ImGui::Checkbox("Orthographic", &C->bOrthographic);
-				if (C->bOrthographic)
-					ImGui::DragFloat("Ortho Size", &C->OrthoSize, 0.1f);
+					if (C->bOrthographic)
+					{
+						ImGui::DragFloat("Ortho Size", &C->OrthoSize, 0.1f);
+					}
 			}
 		}
 	}
@@ -2013,8 +2027,11 @@ void FEditorLayer::DrawInspectorPanel()
 				{
 					if (const ImGuiPayload* Payload = ImGui::AcceptDragDropPayload("ASSET_PATH"))
 					{
-						const char* Path = static_cast<const char*>(Payload->Data);
-						if (Path) std::strncpy(C->ShaderPath, Path, ECSComponentAssetPathMax - 1);
+							const char* Path = static_cast<const char*>(Payload->Data);
+							if (Path)
+							{
+								std::strncpy(C->ShaderPath, Path, ECSComponentAssetPathMax - 1);
+							}
 					}
 					ImGui::EndDragDropTarget();
 				}
@@ -3517,7 +3534,7 @@ bool FEditorLayer::SaveContentAsset(const std::string& CatalogKey)
 		return false;
 	}
 
-	Ref<FResource> Resource = Resources->Find(CatalogKey);
+	TRef<FResource> Resource = Resources->Find(CatalogKey);
 	if (!Resource)
 	{
 		return false;
@@ -3539,7 +3556,7 @@ void FEditorLayer::OpenResourceBrowser(const std::string& CatalogKey)
 	}
 
 	FResourceSystem* Resources = Detail::GetResourceSystem();
-	Ref<FResource> Resource = Resources ? Resources->Find(CatalogKey) : Ref<FResource>{};
+	TRef<FResource> Resource = Resources ? Resources->Find(CatalogKey) : TRef<FResource>{};
 	FResourceBrowserWindow Window;
 	Window.CatalogKey = CatalogKey;
 	Window.Type = Resource ? Resource->GetType() : EResourceType::Unknown;
@@ -3639,8 +3656,8 @@ void FEditorLayer::DrawOpenResourceBrowsers(FEngineBase& App)
 			bool bTabOpen = true;
 			if (ImGui::BeginTabItem(TabLabel.c_str(), &bTabOpen, TabFlags))
 			{
-				Ref<FResource> Resource =
-					Resources ? Resources->Find(Window.CatalogKey) : Ref<FResource>{};
+				TRef<FResource> Resource =
+					Resources ? Resources->Find(Window.CatalogKey) : TRef<FResource>{};
 				if (!Resource)
 				{
 					ImGui::TextDisabled("Resource no longer in catalog.");
@@ -4512,7 +4529,10 @@ void FEditorLayer::ExecuteConsoleLine(FEngineBase& App, const std::string& RawLi
 
 	std::string Lower = Line;
 	std::transform(Lower.begin(), Lower.end(), Lower.begin(),
-		[](unsigned char Ch) { return static_cast<char>(std::tolower(Ch)); });
+		[](unsigned char Ch)
+		{
+			return static_cast<char>(std::tolower(Ch));
+		});
 
 	if (Lower == "help" || Lower == "?")
 	{

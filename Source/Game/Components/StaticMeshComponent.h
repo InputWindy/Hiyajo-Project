@@ -11,7 +11,10 @@ struct FStaticMeshComponent
 {
 	char MeshPath[ECSComponentAssetPathMax] = {};
 
-	[[nodiscard]] bool IsValid() const { return MeshPath[0] != '\0'; }
+	[[nodiscard]] bool IsValid() const
+	{
+		return MeshPath[0] != '\0';
+	}
 };
 
 } // namespace Maho

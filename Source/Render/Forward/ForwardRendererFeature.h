@@ -69,7 +69,10 @@ public:
 	void ExecuteStage(ERenderPipelineStage Stage, const FForwardDrawContext& Context, FFrameContext& FrameCtx, FRDGBuilder& GB);
 
 	/** Mark shader dirty so next frame recompiles (hot-reload from editor). */
-	void MarkShaderDirty() { Ptr->bShaderReady = false; }
+	void MarkShaderDirty()
+	{
+		Ptr->bShaderReady = false;
+	}
 
 private:
 	static constexpr int FrameRingSize = 3;

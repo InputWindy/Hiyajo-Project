@@ -46,7 +46,10 @@ public:
 	void DrawDockPanelMenuToggles(FEditorUIDrawContext& Ctx);
 
 	[[nodiscard]] bool* FindDockOpenFlag(std::string_view Id);
-	[[nodiscard]] const std::vector<FEditorDockPanelDesc>& GetDockPanels() const { return DockPanels; }
+	[[nodiscard]] const std::vector<FEditorDockPanelDesc>& GetDockPanels() const
+	{
+		return DockPanels;
+	}
 
 	/** Top-level menu catalogs (File / Window / Help / …) sorted for the shell. */
 	[[nodiscard]] std::vector<FEditorUICatalog> GetMenuCatalogs() const;

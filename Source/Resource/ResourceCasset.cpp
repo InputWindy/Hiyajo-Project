@@ -54,9 +54,15 @@ inline constexpr std::uint32_t kRecordHasExtras = 1u << 2;
 class FByteWriter
 {
 public:
-	explicit FByteWriter(std::vector<std::uint8_t>& Out) : Out_(Out) {}
+	explicit FByteWriter(std::vector<std::uint8_t>& Out)
+		: Out_(Out)
+	{
+	}
 
-	void WriteU8(std::uint8_t V) { Out_.push_back(V); }
+	void WriteU8(std::uint8_t V)
+	{
+		Out_.push_back(V);
+	}
 	void WriteU16(std::uint16_t V)
 	{
 		Out_.push_back(static_cast<std::uint8_t>(V & 0xFF));
@@ -65,7 +71,9 @@ public:
 	void WriteU32(std::uint32_t V)
 	{
 		for (int I = 0; I < 4; ++I)
+		{
 			Out_.push_back(static_cast<std::uint8_t>((V >> (I * 8)) & 0xFF));
+		}
 	}
 	void WriteBytes(const std::uint8_t* Data, std::size_t Count)
 	{
@@ -75,14 +83,21 @@ public:
 	{
 		WriteU32(static_cast<std::uint32_t>(S.size()));
 		if (!S.empty())
+		{
 			WriteBytes(reinterpret_cast<const std::uint8_t*>(S.data()), S.size());
+		}
 	}
 	void PadTo4()
 	{
 		while (Out_.size() % 4 != 0)
+		{
 			Out_.push_back(0);
+		}
 	}
-	std::size_t Tell() const { return Out_.size(); }
+	std::size_t Tell() const
+	{
+		return Out_.size();
+	}
 
 private:
 	std::vector<std::uint8_t>& Out_;
@@ -92,18 +107,29 @@ class FByteReader
 {
 public:
 	FByteReader(const std::uint8_t* Data, std::size_t Size)
-		: Data_(Data), Size_(Size), Pos_(0) {}
+		: Data_(Data), Size_(Size), Pos_(0)
+	{
+	}
 
-	[[nodiscard]] bool CanRead(std::size_t Num) const { return Pos_ + Num <= Size_; }
+	[[nodiscard]] bool CanRead(std::size_t Num) const
+	{
+		return Pos_ + Num <= Size_;
+	}
 
 	std::uint8_t ReadU8()
 	{
-		if (!CanRead(1)) throw std::runtime_error("ReadU8 underflow");
+		if (!CanRead(1))
+		{
+			throw std::runtime_error("ReadU8 underflow");
+		}
 		return Data_[Pos_++];
 	}
 	std::uint16_t ReadU16()
 	{
-		if (!CanRead(2)) throw std::runtime_error("ReadU16 underflow");
+		if (!CanRead(2))
+		{
+			throw std::runtime_error("ReadU16 underflow");
+		}
 		std::uint16_t V = static_cast<std::uint16_t>(Data_[Pos_])
 			| (static_cast<std::uint16_t>(Data_[Pos_ + 1]) << 8);
 		Pos_ += 2;
@@ -111,7 +137,10 @@ public:
 	}
 	std::uint32_t ReadU32()
 	{
-		if (!CanRead(4)) throw std::runtime_error("ReadU32 underflow");
+		if (!CanRead(4))
+		{
+			throw std::runtime_error("ReadU32 underflow");
+		}
 		std::uint32_t V = static_cast<std::uint32_t>(Data_[Pos_])
 			| (static_cast<std::uint32_t>(Data_[Pos_ + 1]) << 8)
 			| (static_cast<std::uint32_t>(Data_[Pos_ + 2]) << 16)
@@ -121,7 +150,10 @@ public:
 	}
 	std::vector<std::uint8_t> ReadBytes(std::size_t Count)
 	{
-		if (!CanRead(Count)) throw std::runtime_error("ReadBytes underflow");
+		if (!CanRead(Count))
+		{
+			throw std::runtime_error("ReadBytes underflow");
+		}
 		std::vector<std::uint8_t> Out(Data_ + Pos_, Data_ + Pos_ + Count);
 		Pos_ += Count;
 		return Out;
@@ -129,16 +161,28 @@ public:
 	std::string ReadString()
 	{
 		std::uint32_t Len = ReadU32();
-		if (Len == 0) return {};
-		if (!CanRead(Len)) throw std::runtime_error("ReadString underflow");
+		if (Len == 0)
+		{
+			return {};
+		}
+		if (!CanRead(Len))
+		{
+			throw std::runtime_error("ReadString underflow");
+		}
 		std::string S(reinterpret_cast<const char*>(Data_ + Pos_), Len);
 		Pos_ += Len;
 		return S;
 	}
-	void Skip(std::size_t N) { Pos_ = std::min(Pos_ + N, Size_); }
+	void Skip(std::size_t N)
+	{
+		Pos_ = std::min(Pos_ + N, Size_);
+	}
 	void SkipPadTo4()
 	{
-		while (Pos_ % 4 != 0 && Pos_ < Size_) ++Pos_;
+		while (Pos_ % 4 != 0 && Pos_ < Size_)
+		{
+			++Pos_;
+		}
 	}
 
 private:
@@ -177,7 +221,9 @@ void WriteObjectRecord(const FResource& Object, std::vector<std::uint8_t>& Out)
 
 	std::vector<std::string> Refs = Object.GetReferencePaths();
 	if (!Refs.empty())
+	{
 		RecordFlags |= kRecordHasRefs;
+	}
 
 	W.WriteU32(RecordFlags);
 	W.WriteU32(0); // Reserved0
@@ -187,7 +233,9 @@ void WriteObjectRecord(const FResource& Object, std::vector<std::uint8_t>& Out)
 	{
 		W.WriteU32(static_cast<std::uint32_t>(Refs.size()));
 		for (const std::string& Ref : Refs)
+		{
 			W.WriteString(Ref);
+		}
 	}
 
 	std::vector<std::uint8_t> CpuBytes;
@@ -195,7 +243,9 @@ void WriteObjectRecord(const FResource& Object, std::vector<std::uint8_t>& Out)
 	{
 		W.WriteU32(static_cast<std::uint32_t>(CpuBytes.size()));
 		if (!CpuBytes.empty())
+		{
 			W.WriteBytes(CpuBytes.data(), CpuBytes.size());
+		}
 	}
 	else
 	{
@@ -216,14 +266,18 @@ void ParseObjectRecord(FByteReader& R, FPackageDocumentObject& Out)
 		std::uint32_t RefCount = R.ReadU32();
 		Out.Refs.reserve(RefCount);
 		for (std::uint32_t I = 0; I < RefCount; ++I)
+		{
 			Out.Refs.push_back(R.ReadString());
+		}
 	}
 
 	if ((RecordFlags & kRecordHasCpu) != 0)
 	{
 		std::uint32_t CpuSize = R.ReadU32();
 		if (CpuSize > 0)
+		{
 			Out.CpuBytes = R.ReadBytes(CpuSize);
+		}
 	}
 
 	if ((RecordFlags & kRecordHasExtras) != 0)
@@ -253,7 +307,10 @@ void BuildUncompressedDocument(
 		W.WriteU32(Package.Flags);
 		W.WriteString("");
 		W.WriteU32(static_cast<std::uint32_t>(Objects.size()));
-		for (int I = 0; I < 5; ++I) W.WriteU32(0);
+		for (int I = 0; I < 5; ++I)
+		{
+			W.WriteU32(0);
+		}
 		AppendChunk(OutDoc, kChunkTagPKG1, kChunkMustUnderstand, Chunk);
 	}
 
@@ -265,14 +322,22 @@ void BuildUncompressedDocument(
 		std::vector<std::pair<std::string, std::string>> Deps;
 		for (const FResource* Obj : Objects)
 		{
-			if (!Obj) continue;
+			if (!Obj)
+			{
+				continue;
+			}
 			for (const std::string& RefPath : Obj->GetReferencePaths())
 			{
 				std::size_t Dot = RefPath.find('.');
-				if (Dot == std::string::npos) continue;
+				if (Dot == std::string::npos)
+				{
+					continue;
+				}
 				std::string DepPkg = RefPath.substr(0, Dot);
 				if (DepPkg != Package.Name)
+				{
 					Deps.push_back({DepPkg, RefPath});
+				}
 			}
 		}
 
@@ -293,7 +358,10 @@ void BuildUncompressedDocument(
 		W.WriteU32(static_cast<std::uint32_t>(Objects.size()));
 		for (const FResource* Obj : Objects)
 		{
-			if (!Obj) continue;
+			if (!Obj)
+			{
+				continue;
+			}
 			std::vector<std::uint8_t> Record;
 			WriteObjectRecord(*Obj, Record);
 			W.WriteBytes(Record.data(), Record.size());
@@ -315,7 +383,10 @@ void ParseUncompressedDocument(
 		std::uint32_t Flags = R.ReadU32();
 		(void)Flags;
 
-		if (!R.CanRead(PayloadSize)) break;
+		if (!R.CanRead(PayloadSize))
+		{
+			break;
+		}
 
 		std::vector<std::uint8_t> Payload = R.ReadBytes(PayloadSize);
 		FByteReader PR(Payload.data(), Payload.size());
@@ -359,7 +430,10 @@ void ParseUncompressedDocument(
 
 bool IsCassetBinaryFile(const std::uint8_t* Data, std::size_t Size)
 {
-	if (Size < 8) return false;
+	if (Size < 8)
+	{
+		return false;
+	}
 	std::uint32_t Magic = static_cast<std::uint32_t>(Data[0])
 		| (static_cast<std::uint32_t>(Data[1]) << 8)
 		| (static_cast<std::uint32_t>(Data[2]) << 16)
@@ -392,7 +466,11 @@ bool WrapDocumentToMcasFile(
 	W.WriteU32(static_cast<std::uint32_t>(Compressed.size()));
 	W.WriteU32(0); // Checksum
 
-	for (int I = 0; I < 8; ++I) W.WriteU32(0); // Reserved
+	// Reserved
+	for (int I = 0; I < 8; ++I)
+	{
+		W.WriteU32(0);
+	}
 
 	W.WriteBytes(Compressed.data(), Compressed.size());
 	return true;
@@ -413,18 +491,27 @@ bool DecodePackageFile(
 	std::size_t FileSize,
 	FPackageDocument& OutPackage)
 {
-	if (FileSize < kCassetHeaderSize) return false;
+	if (FileSize < kCassetHeaderSize)
+	{
+		return false;
+	}
 
 	FByteReader R(FileBytes, FileSize);
 	std::uint32_t Magic = R.ReadU32();
-	if (Magic != kCassetMagic) return false;
+	if (Magic != kCassetMagic)
+	{
+		return false;
+	}
 
 	std::uint32_t FormatVersion = R.ReadU32();
 	std::uint32_t HeaderSize = R.ReadU32();
 	(void)HeaderSize;
 	std::uint32_t Flags = R.ReadU32();
 
-	if (FormatVersion > kCassetFormatVersion) return false;
+	if (FormatVersion > kCassetFormatVersion)
+	{
+		return false;
+	}
 
 	R.Skip(4); // ContentVersion
 	std::uint32_t UncompressedSize = R.ReadU32();

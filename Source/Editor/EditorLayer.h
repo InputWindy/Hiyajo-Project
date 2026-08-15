@@ -60,9 +60,18 @@ public:
 
 	bool ExecuteStage(EEngineStage Stage) override;
 
-	[[nodiscard]] FEditorUIRegistry& GetUIRegistry() { return UIRegistry; }
-	[[nodiscard]] const FEditorUIRegistry& GetUIRegistry() const { return UIRegistry; }
-	[[nodiscard]] bool IsDummyUIEnabled() const { return bShowDummyUI; }
+	[[nodiscard]] FEditorUIRegistry& GetUIRegistry()
+	{
+		return UIRegistry;
+	}
+	[[nodiscard]] const FEditorUIRegistry& GetUIRegistry() const
+	{
+		return UIRegistry;
+	}
+	[[nodiscard]] bool IsDummyUIEnabled() const
+	{
+		return bShowDummyUI;
+	}
 
 private:
 	struct FContentAssetEntry

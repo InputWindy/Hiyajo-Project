@@ -11,7 +11,10 @@ struct FSkeletonComponent
 {
 	char SkeletonPath[ECSComponentAssetPathMax] = {};
 
-	[[nodiscard]] bool IsValid() const { return SkeletonPath[0] != '\0'; }
+	[[nodiscard]] bool IsValid() const
+	{
+		return SkeletonPath[0] != '\0';
+	}
 };
 
 } // namespace Maho

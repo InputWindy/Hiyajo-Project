@@ -18,7 +18,10 @@ public:
 	FScriptDispatchSystem();
 	~FScriptDispatchSystem() override;
 
-	[[nodiscard]] const char* GetName() const override { return "ScriptDispatchSystem"; }
+	[[nodiscard]] const char* GetName() const override
+	{
+		return "ScriptDispatchSystem";
+	}
 
 	void OnBeginFrame(FWorld& World) override;
 	void OnProcessInput(FWorld& World) override;

@@ -25,20 +25,59 @@ class FTexture : public FResource
 public:
 	FTexture(std::string InName, EAssetType InType, std::string InSourcePath);
 
-	[[nodiscard]] ETextureDimension GetDimension() const { return Dimension; }
-	[[nodiscard]] ETexturePixelFormat GetPixelFormat() const { return PixelFormat; }
-	[[nodiscard]] std::uint32_t GetWidth() const { return Width; }
-	[[nodiscard]] std::uint32_t GetHeight() const { return Height; }
-	[[nodiscard]] std::uint32_t GetDepth() const { return Depth; }
-	[[nodiscard]] std::uint32_t GetArrayLayers() const { return ArrayLayers; }
-	[[nodiscard]] std::uint32_t GetMipCount() const { return MipCount; }
-	[[nodiscard]] bool IsSRGB() const { return bSRGB; }
-	[[nodiscard]] const std::vector<std::uint8_t>& GetPixels() const { return Pixels; }
-	[[nodiscard]] std::vector<std::uint8_t>& GetPixelsMutable() { return Pixels; }
+	[[nodiscard]] ETextureDimension GetDimension() const
+	{
+		return Dimension;
+	}
+	[[nodiscard]] ETexturePixelFormat GetPixelFormat() const
+	{
+		return PixelFormat;
+	}
+	[[nodiscard]] std::uint32_t GetWidth() const
+	{
+		return Width;
+	}
+	[[nodiscard]] std::uint32_t GetHeight() const
+	{
+		return Height;
+	}
+	[[nodiscard]] std::uint32_t GetDepth() const
+	{
+		return Depth;
+	}
+	[[nodiscard]] std::uint32_t GetArrayLayers() const
+	{
+		return ArrayLayers;
+	}
+	[[nodiscard]] std::uint32_t GetMipCount() const
+	{
+		return MipCount;
+	}
+	[[nodiscard]] bool IsSRGB() const
+	{
+		return bSRGB;
+	}
+	[[nodiscard]] const std::vector<std::uint8_t>& GetPixels() const
+	{
+		return Pixels;
+	}
+	[[nodiscard]] std::vector<std::uint8_t>& GetPixelsMutable()
+	{
+		return Pixels;
+	}
 
-	[[nodiscard]] const std::vector<std::uint8_t>& GetSerializedSourceBytes() const { return SerializedSourceBytes; }
-	[[nodiscard]] const std::string& GetSerializedSourceHint() const { return SerializedSourceHint; }
-	[[nodiscard]] bool HasSerializedSource() const { return !SerializedSourceBytes.empty(); }
+	[[nodiscard]] const std::vector<std::uint8_t>& GetSerializedSourceBytes() const
+	{
+		return SerializedSourceBytes;
+	}
+	[[nodiscard]] const std::string& GetSerializedSourceHint() const
+	{
+		return SerializedSourceHint;
+	}
+	[[nodiscard]] bool HasSerializedSource() const
+	{
+		return !SerializedSourceBytes.empty();
+	}
 	void SetSerializedSource(std::string Hint, std::vector<std::uint8_t> Bytes);
 	void ClearSerializedSource();
 
@@ -106,16 +145,46 @@ class FMaterial : public FResource
 public:
 	FMaterial(std::string InName, EAssetType InType, std::string InSourcePath);
 
-	[[nodiscard]] const std::string& GetBaseColorTexture() const { return BaseColorPath; }
-	void SetBaseColorTexture(std::string Path) { BaseColorPath = std::move(Path); }
-	[[nodiscard]] const std::string& GetNormalTexture() const { return NormalPath; }
-	void SetNormalTexture(std::string Path) { NormalPath = std::move(Path); }
-	[[nodiscard]] const std::string& GetMetallicRoughnessTexture() const { return MetallicRoughnessPath; }
-	void SetMetallicRoughnessTexture(std::string Path) { MetallicRoughnessPath = std::move(Path); }
-	[[nodiscard]] const std::string& GetOcclusionTexture() const { return OcclusionPath; }
-	void SetOcclusionTexture(std::string Path) { OcclusionPath = std::move(Path); }
-	[[nodiscard]] const std::string& GetEmissiveTexture() const { return EmissivePath; }
-	void SetEmissiveTexture(std::string Path) { EmissivePath = std::move(Path); }
+	[[nodiscard]] const std::string& GetBaseColorTexture() const
+	{
+		return BaseColorPath;
+	}
+	void SetBaseColorTexture(std::string Path)
+	{
+		BaseColorPath = std::move(Path);
+	}
+	[[nodiscard]] const std::string& GetNormalTexture() const
+	{
+		return NormalPath;
+	}
+	void SetNormalTexture(std::string Path)
+	{
+		NormalPath = std::move(Path);
+	}
+	[[nodiscard]] const std::string& GetMetallicRoughnessTexture() const
+	{
+		return MetallicRoughnessPath;
+	}
+	void SetMetallicRoughnessTexture(std::string Path)
+	{
+		MetallicRoughnessPath = std::move(Path);
+	}
+	[[nodiscard]] const std::string& GetOcclusionTexture() const
+	{
+		return OcclusionPath;
+	}
+	void SetOcclusionTexture(std::string Path)
+	{
+		OcclusionPath = std::move(Path);
+	}
+	[[nodiscard]] const std::string& GetEmissiveTexture() const
+	{
+		return EmissivePath;
+	}
+	void SetEmissiveTexture(std::string Path)
+	{
+		EmissivePath = std::move(Path);
+	}
 
 	[[nodiscard]] std::vector<std::string> GetReferencePaths() const override;
 
@@ -141,12 +210,30 @@ class FStaticMesh : public FResource
 public:
 	FStaticMesh(std::string InName, EAssetType InType, std::string InSourcePath);
 
-	[[nodiscard]] const std::string& GetMaterial() const { return MaterialPath; }
-	void SetMaterial(std::string Path) { MaterialPath = std::move(Path); }
-	[[nodiscard]] const std::vector<float>& GetPositions() const { return Positions; }
-	[[nodiscard]] const std::vector<float>& GetNormals() const { return Normals; }
-	[[nodiscard]] const std::vector<float>& GetUVs() const { return UVs; }
-	[[nodiscard]] const std::vector<std::uint32_t>& GetIndices() const { return Indices; }
+	[[nodiscard]] const std::string& GetMaterial() const
+	{
+		return MaterialPath;
+	}
+	void SetMaterial(std::string Path)
+	{
+		MaterialPath = std::move(Path);
+	}
+	[[nodiscard]] const std::vector<float>& GetPositions() const
+	{
+		return Positions;
+	}
+	[[nodiscard]] const std::vector<float>& GetNormals() const
+	{
+		return Normals;
+	}
+	[[nodiscard]] const std::vector<float>& GetUVs() const
+	{
+		return UVs;
+	}
+	[[nodiscard]] const std::vector<std::uint32_t>& GetIndices() const
+	{
+		return Indices;
+	}
 
 	void SetCpuGeometry(
 		std::vector<float> InPositions,
@@ -190,7 +277,10 @@ class FSkeleton : public FResource
 public:
 	FSkeleton(std::string InName, EAssetType InType, std::string InSourcePath);
 
-	[[nodiscard]] const std::vector<FSkeletonBone>& GetBones() const { return Bones; }
+	[[nodiscard]] const std::vector<FSkeletonBone>& GetBones() const
+	{
+		return Bones;
+	}
 	void SetBones(std::vector<FSkeletonBone> InBones);
 
 	void Serialize(FArchive& Ar) override;
@@ -204,11 +294,20 @@ class FAnimation : public FResource
 public:
 	FAnimation(std::string InName, EAssetType InType, std::string InSourcePath);
 
-	[[nodiscard]] const std::string& GetSkeleton() const { return SkeletonPath; }
+	[[nodiscard]] const std::string& GetSkeleton() const
+	{
+		return SkeletonPath;
+	}
 	void SetSkeleton(std::string Path);
-	[[nodiscard]] float GetDurationSeconds() const { return DurationSeconds; }
+	[[nodiscard]] float GetDurationSeconds() const
+	{
+		return DurationSeconds;
+	}
 	void SetDurationSeconds(float Seconds);
-	[[nodiscard]] const std::vector<FAnimationTrack>& GetTracks() const { return Tracks; }
+	[[nodiscard]] const std::vector<FAnimationTrack>& GetTracks() const
+	{
+		return Tracks;
+	}
 	void SetTracks(std::vector<FAnimationTrack> InTracks);
 
 	[[nodiscard]] std::vector<std::string> GetReferencePaths() const override;
@@ -228,8 +327,14 @@ class FAnimationGraph : public FResource
 public:
 	FAnimationGraph(std::string InName, EAssetType InType, std::string InSourcePath);
 
-	[[nodiscard]] const std::string& GetDocumentJson() const { return DocumentJson; }
-	void SetDocumentJson(std::string Json) { DocumentJson = std::move(Json); }
+	[[nodiscard]] const std::string& GetDocumentJson() const
+	{
+		return DocumentJson;
+	}
+	void SetDocumentJson(std::string Json)
+	{
+		DocumentJson = std::move(Json);
+	}
 
 	void Serialize(FArchive& Ar) override;
 
@@ -242,8 +347,14 @@ class FPrefab : public FResource
 public:
 	FPrefab(std::string InName, EAssetType InType, std::string InSourcePath);
 
-	[[nodiscard]] const std::string& GetDocumentJson() const { return DocumentJson; }
-	void SetDocumentJson(std::string Json) { DocumentJson = std::move(Json); }
+	[[nodiscard]] const std::string& GetDocumentJson() const
+	{
+		return DocumentJson;
+	}
+	void SetDocumentJson(std::string Json)
+	{
+		DocumentJson = std::move(Json);
+	}
 
 	void Serialize(FArchive& Ar) override;
 

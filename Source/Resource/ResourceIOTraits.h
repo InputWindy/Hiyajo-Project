@@ -27,7 +27,10 @@ enum class EResourceBulkPreparedType : std::uint8_t
 template <>
 struct TResourceIOTraits<FTexture2D>
 {
-	static constexpr EAssetType GetType() { return EAssetType::Texture2D; }
+	static constexpr EAssetType GetType()
+	{
+		return EAssetType::Texture2D;
+	}
 	static constexpr const char* TypeNames[] = { "Texture2D", "Texture", "FTexture2D", "FTexture" };
 	[[nodiscard]] static bool MatchesSourcePath(const std::string& SourcePath);
 	[[nodiscard]] static bool ImportSource(FResourceImportConfig& Config, FResourceBulkData& Bulk, FTexture2D& Resource, FResourceSystem* Manager = nullptr);
@@ -37,7 +40,10 @@ struct TResourceIOTraits<FTexture2D>
 template <>
 struct TResourceIOTraits<FTexture3D>
 {
-	static constexpr EAssetType GetType() { return EAssetType::Texture3D; }
+	static constexpr EAssetType GetType()
+	{
+		return EAssetType::Texture3D;
+	}
 	static constexpr const char* TypeNames[] = { "Texture3D", "FTexture3D" };
 	[[nodiscard]] static bool MatchesSourcePath(const std::string& SourcePath);
 	[[nodiscard]] static bool ImportSource(FResourceImportConfig& Config, FResourceBulkData& Bulk, FTexture3D& Resource, FResourceSystem* Manager = nullptr);
@@ -47,7 +53,10 @@ struct TResourceIOTraits<FTexture3D>
 template <>
 struct TResourceIOTraits<FTextureCube>
 {
-	static constexpr EAssetType GetType() { return EAssetType::TextureCube; }
+	static constexpr EAssetType GetType()
+	{
+		return EAssetType::TextureCube;
+	}
 	static constexpr const char* TypeNames[] = { "TextureCube", "FTextureCube", "Cubemap" };
 	[[nodiscard]] static bool MatchesSourcePath(const std::string& SourcePath);
 	[[nodiscard]] static bool ImportSource(FResourceImportConfig& Config, FResourceBulkData& Bulk, FTextureCube& Resource, FResourceSystem* Manager = nullptr);
@@ -57,7 +66,10 @@ struct TResourceIOTraits<FTextureCube>
 template <>
 struct TResourceIOTraits<FTextureCubeArray>
 {
-	static constexpr EAssetType GetType() { return EAssetType::TextureCubeArray; }
+	static constexpr EAssetType GetType()
+	{
+		return EAssetType::TextureCubeArray;
+	}
 	static constexpr const char* TypeNames[] = { "TextureCubeArray", "FTextureCubeArray" };
 	[[nodiscard]] static bool MatchesSourcePath(const std::string& SourcePath);
 	[[nodiscard]] static bool ImportSource(FResourceImportConfig& Config, FResourceBulkData& Bulk, FTextureCubeArray& Resource, FResourceSystem* Manager = nullptr);
@@ -67,7 +79,10 @@ struct TResourceIOTraits<FTextureCubeArray>
 template <>
 struct TResourceIOTraits<FTexture2DArray>
 {
-	static constexpr EAssetType GetType() { return EAssetType::Texture2DArray; }
+	static constexpr EAssetType GetType()
+	{
+		return EAssetType::Texture2DArray;
+	}
 	static constexpr const char* TypeNames[] = { "Texture2DArray", "FTexture2DArray" };
 	[[nodiscard]] static bool MatchesSourcePath(const std::string& SourcePath);
 	[[nodiscard]] static bool ImportSource(FResourceImportConfig& Config, FResourceBulkData& Bulk, FTexture2DArray& Resource, FResourceSystem* Manager = nullptr);
@@ -77,7 +92,10 @@ struct TResourceIOTraits<FTexture2DArray>
 template <>
 struct TResourceIOTraits<FPrefab>
 {
-	static constexpr EAssetType GetType() { return EAssetType::Prefab; }
+	static constexpr EAssetType GetType()
+	{
+		return EAssetType::Prefab;
+	}
 	static constexpr const char* TypeNames[] = { "Prefab", "FPrefab", "Model", "MeshScene" };
 	[[nodiscard]] static bool MatchesSourcePath(const std::string& SourcePath);
 	[[nodiscard]] static bool ImportSource(FResourceImportConfig& Config, FResourceBulkData& Bulk, FPrefab& Resource, FResourceSystem* Manager = nullptr);

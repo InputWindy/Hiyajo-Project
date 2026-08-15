@@ -41,7 +41,7 @@ std::string SanitizeObjectName(std::string_view Raw, std::string_view Fallback)
 		}
 		else
 		{
-			// '!', spaces, dots, path separators, etc. → underscore (MMD often uses '肌2!').
+			// '!', spaces, dots, path separators, etc. map to underscore (MMD often uses "Muse2!").
 			Out.push_back('_');
 		}
 	}
@@ -107,7 +107,7 @@ template <typename TResource>
 
 	auto Resource = std::make_unique<TResource>(Name, Type, SourcePath);
 	TResource* Raw = Resource.get();
-	if (!Resources.RegisterResource(Ref<FResource>(Resource.release()), PackagePath))
+	if (!Resources.RegisterResource(TRef<FResource>(Resource.release()), PackagePath))
 		return nullptr;
 	return Raw;
 }
@@ -586,7 +586,8 @@ std::string GetExtensionLower(std::string_view Path)
 		return {};
 	}
 	std::string Ext(Name.substr(Dot + 1));
-	std::transform(Ext.begin(), Ext.end(), Ext.begin(), [](unsigned char C) {
+	std::transform(Ext.begin(), Ext.end(), Ext.begin(), [](unsigned char C)
+	{
 		return static_cast<char>(std::tolower(C));
 	});
 	return Ext;

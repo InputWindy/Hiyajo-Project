@@ -652,7 +652,10 @@ void FAgentChatClient::Start(const FAgentChatStartOptions& Options)
 	Impl->LastEventId = -1;
 	Impl->bRunning = true;
 	Impl->SetStatus("Connecting...");
-	Impl->Worker = std::thread([this]() { Impl->WorkerMain(); });
+	Impl->Worker = std::thread([this]()
+	{
+		Impl->WorkerMain();
+	});
 }
 
 void FAgentChatClient::Stop()

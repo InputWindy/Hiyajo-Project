@@ -27,7 +27,10 @@ struct FScriptComponent
 
 	void SetParam(const char* Key, const char* Value)
 	{
-		if (!Key || !Value) return;
+		if (!Key || !Value)
+		{
+			return;
+		}
 		for (std::uint32_t I = 0; I < ParamCount; ++I)
 		{
 			if (std::strcmp(Params[I].Key, Key) == 0)
@@ -37,7 +40,10 @@ struct FScriptComponent
 				return;
 			}
 		}
-		if (ParamCount >= ECSMaxScriptParams) return;
+		if (ParamCount >= ECSMaxScriptParams)
+		{
+			return;
+		}
 		std::uint32_t Idx = ParamCount++;
 		std::strncpy(Params[Idx].Key, Key, ECSComponentNameMax - 1);
 		Params[Idx].Key[ECSComponentNameMax - 1] = '\0';
@@ -47,16 +53,24 @@ struct FScriptComponent
 
 	[[nodiscard]] const char* GetParam(const char* Key) const
 	{
-		if (!Key) return nullptr;
+		if (!Key)
+		{
+			return nullptr;
+		}
 		for (std::uint32_t I = 0; I < ParamCount; ++I)
 		{
 			if (std::strcmp(Params[I].Key, Key) == 0)
+			{
 				return Params[I].Value;
+			}
 		}
 		return nullptr;
 	}
 
-	[[nodiscard]] bool IsValid() const { return ScriptPath[0] != '\0'; }
+	[[nodiscard]] bool IsValid() const
+	{
+		return ScriptPath[0] != '\0';
+	}
 };
 
 } // namespace Maho

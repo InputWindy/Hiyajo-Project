@@ -35,7 +35,10 @@ struct FMaterialComponent
 	FTextureOverride TextureOverrides[ECSMaxTextureOverrides] = {};
 	std::uint32_t TextureOverrideCount = 0;
 
-	[[nodiscard]] bool IsValid() const { return ShaderPath[0] != '\0'; }
+	[[nodiscard]] bool IsValid() const
+	{
+		return ShaderPath[0] != '\0';
+	}
 
 	void SetFloat(const char* Name, float V)
 	{
@@ -68,7 +71,10 @@ struct FMaterialComponent
 
 	void SetOverridePath(const char* Name, const char* Path)
 	{
-		if (!Name || !Path) return;
+		if (!Name || !Path)
+		{
+			return;
+		}
 		std::uint32_t Idx = FindOrAddTexOverride(Name);
 		if (Idx < ECSMaxTextureOverrides)
 		{
@@ -79,22 +85,32 @@ struct FMaterialComponent
 
 	[[nodiscard]] const char* GetOverridePath(const char* Name) const
 	{
-		if (!Name) return nullptr;
+		if (!Name)
+		{
+			return nullptr;
+		}
 		for (std::uint32_t I = 0; I < TextureOverrideCount; ++I)
 		{
 			if (std::strcmp(TextureOverrides[I].Name, Name) == 0)
+			{
 				return TextureOverrides[I].Path;
+			}
 		}
 		return nullptr;
 	}
 
 	[[nodiscard]] const FPropertyOverride* FindOverride(const char* Name) const
 	{
-		if (!Name) return nullptr;
+		if (!Name)
+		{
+			return nullptr;
+		}
 		for (std::uint32_t I = 0; I < OverrideCount; ++I)
 		{
 			if (std::strcmp(Overrides[I].Name, Name) == 0)
+			{
 				return &Overrides[I];
+			}
 		}
 		return nullptr;
 	}
@@ -105,9 +121,14 @@ private:
 		for (std::uint32_t I = 0; I < OverrideCount; ++I)
 		{
 			if (std::strcmp(Overrides[I].Name, Name) == 0)
+			{
 				return I;
+			}
 		}
-		if (OverrideCount >= ECSMaxPropertyOverrides) return ECSMaxPropertyOverrides;
+		if (OverrideCount >= ECSMaxPropertyOverrides)
+		{
+			return ECSMaxPropertyOverrides;
+		}
 		std::uint32_t Idx = OverrideCount++;
 		std::strncpy(Overrides[Idx].Name, Name, ECSComponentNameMax - 1);
 		Overrides[Idx].Name[ECSComponentNameMax - 1] = '\0';
@@ -119,9 +140,14 @@ private:
 		for (std::uint32_t I = 0; I < TextureOverrideCount; ++I)
 		{
 			if (std::strcmp(TextureOverrides[I].Name, Name) == 0)
+			{
 				return I;
+			}
 		}
-		if (TextureOverrideCount >= ECSMaxTextureOverrides) return ECSMaxTextureOverrides;
+		if (TextureOverrideCount >= ECSMaxTextureOverrides)
+		{
+			return ECSMaxTextureOverrides;
+		}
 		std::uint32_t Idx = TextureOverrideCount++;
 		std::strncpy(TextureOverrides[Idx].Name, Name, ECSComponentNameMax - 1);
 		TextureOverrides[Idx].Name[ECSComponentNameMax - 1] = '\0';

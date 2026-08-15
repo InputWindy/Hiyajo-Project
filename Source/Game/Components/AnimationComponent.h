@@ -29,8 +29,15 @@ struct FAnimationComponent
 		bPlaying = true;
 	}
 
-	void Stop() { bPlaying = false; }
-	void Pause() { bPlaying = false; }
+	void Stop()
+	{
+		bPlaying = false;
+	}
+
+	void Pause()
+	{
+		bPlaying = false;
+	}
 };
 
 } // namespace Maho
